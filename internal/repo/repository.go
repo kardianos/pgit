@@ -9,14 +9,25 @@ import (
 	"github.com/imgajeed76/pgit/v4/internal/container"
 	"github.com/imgajeed76/pgit/v4/internal/db"
 	"github.com/imgajeed76/pgit/v4/internal/util"
+	"github.com/imgajeed76/pgit/v4/provider"
+	"github.com/imgajeed76/pgit/v4/provider/direct"
 )
 
 // Repository represents a pgit repository
 type Repository struct {
-	Root    string         // Repository root directory
-	Config  *config.Config // Repository configuration
-	DB      *db.DB         // Database connection
-	Runtime container.Runtime
+	Root     string             // Repository root directory
+	Config   *config.Config     // Repository configuration
+	Provider provider.Provider  // Data access provider (direct or remote)
+	Runtime  container.Runtime
+}
+
+// DB returns the underlying *db.DB if the provider is direct.
+// Returns nil for remote providers.
+func (r *Repository) DB() *db.DB {
+	if dp, ok := r.Provider.(*direct.Provider); ok {
+		return dp.DB()
+	}
+	return nil
 }
 
 // Open opens an existing repository
@@ -113,8 +124,10 @@ func Init(path string) (*Repository, error) {
 
 // Connect connects to the local database
 func (r *Repository) Connect(ctx context.Context) error {
-	if r.DB != nil && r.DB.IsConnected() {
-		return nil // Already connected
+	if r.Provider != nil {
+		if d := r.DB(); d != nil && d.IsConnected() {
+			return nil // Already connected
+		}
 	}
 
 	// If a direct database URL is configured, use it instead of
@@ -126,7 +139,7 @@ func (r *Repository) Connect(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		r.DB = conn
+		r.Provider = direct.New(conn)
 		return nil
 	}
 
@@ -155,23 +168,23 @@ func (r *Repository) Connect(ctx context.Context) error {
 		return err
 	}
 
-	r.DB = conn
+	r.Provider = direct.New(conn)
 
 	// Initialize schema if needed
-	exists, err := r.DB.SchemaExists(ctx)
+	exists, err := r.Provider.SchemaExists(ctx)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		if err := r.DB.InitSchema(ctx); err != nil {
+		if err := r.Provider.InitSchema(ctx); err != nil {
 			return err
 		}
 	}
 
 	// Ensure repo path is stored in metadata (for pgit repos command)
 	// Create metadata table if it doesn't exist (for old databases)
-	_ = r.DB.EnsureMetadataTable(ctx)
-	_ = r.DB.SetRepoPath(ctx, r.Root)
+	_ = r.Provider.EnsureMetadataTable(ctx)
+	_ = r.Provider.SetRepoPath(ctx, r.Root)
 
 	return nil
 }
@@ -183,9 +196,9 @@ func (r *Repository) ConnectTo(ctx context.Context, url string) (*db.DB, error) 
 
 // Close closes the database connection
 func (r *Repository) Close() {
-	if r.DB != nil {
-		r.DB.Close()
-		r.DB = nil
+	if r.Provider != nil {
+		r.Provider.Close()
+		r.Provider = nil
 	}
 }
 

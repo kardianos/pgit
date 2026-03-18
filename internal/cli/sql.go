@@ -406,7 +406,7 @@ func runSQL(cmd *cobra.Command, args []string) error {
 	// Execute query
 	if isWrite {
 		// Use Exec for write operations
-		if err := r.DB.Exec(ctx, query); err != nil {
+		if err := r.Provider.Exec(ctx, query); err != nil {
 			return err
 		}
 		fmt.Println("Query executed successfully")
@@ -414,7 +414,7 @@ func runSQL(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use Query for read operations
-	rows, err := r.DB.Query(ctx, query)
+	rows, err := r.Provider.Query(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -538,7 +538,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		spinner.Start()
 	}
 
-	stats, err := r.DB.GetRepoStatsFast(ctx)
+	stats, err := r.Provider.GetRepoStatsFast(ctx)
 	if spinner != nil {
 		spinner.Stop()
 	}
@@ -631,7 +631,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		// Commits xpatch
 		fmt.Println()
 		fmt.Printf("  %s\n", styles.Mute("pgit_commits:"))
-		commitXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_commits")
+		commitXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_commits")
 		if err != nil {
 			fmt.Printf("    Unable to get stats: %v\n", styles.Mute(err.Error()))
 		} else {
@@ -641,7 +641,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		// Text content xpatch
 		fmt.Println()
 		fmt.Printf("  %s\n", styles.Mute("pgit_text_content:"))
-		textXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_text_content")
+		textXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_text_content")
 		if err != nil {
 			fmt.Printf("    Unable to get stats: %v\n", styles.Mute(err.Error()))
 		} else {
@@ -651,7 +651,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		// Binary content xpatch
 		fmt.Println()
 		fmt.Printf("  %s\n", styles.Mute("pgit_binary_content:"))
-		binaryXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_binary_content")
+		binaryXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_binary_content")
 		if err != nil {
 			fmt.Printf("    Unable to get stats: %v\n", styles.Mute(err.Error()))
 		} else {
@@ -802,17 +802,17 @@ func printJSONStats(ctx context.Context, r *repo.Repository, stats *db.RepoStats
 	if showXpatch {
 		jsonStats.Xpatch = &JSONXpatchStats{}
 
-		commitXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_commits")
+		commitXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_commits")
 		if err == nil && commitXpatch != nil {
 			jsonStats.Xpatch.Commits = xpatchToJSON(commitXpatch)
 		}
 
-		textXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_text_content")
+		textXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_text_content")
 		if err == nil && textXpatch != nil {
 			jsonStats.Xpatch.TextContent = xpatchToJSON(textXpatch)
 		}
 
-		binaryXpatch, err := r.DB.GetXpatchStats(ctx, "pgit_binary_content")
+		binaryXpatch, err := r.Provider.GetXpatchStats(ctx, "pgit_binary_content")
 		if err == nil && binaryXpatch != nil {
 			jsonStats.Xpatch.BinaryContent = xpatchToJSON(binaryXpatch)
 		}

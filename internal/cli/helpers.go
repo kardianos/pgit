@@ -6,6 +6,7 @@ import (
 
 	"github.com/imgajeed76/pgit/v4/internal/repo"
 	"github.com/imgajeed76/pgit/v4/internal/util"
+	"github.com/imgajeed76/pgit/v4/provider/direct"
 )
 
 // connectForCommand connects to either the local or remote database.
@@ -50,7 +51,7 @@ func connectForCommand(ctx context.Context, remoteName string) (*repo.Repository
 			WithSuggestion(fmt.Sprintf("pgit push %s  # Push your repository first", remoteName))
 	}
 
-	// Swap DB to point at remote
-	r.DB = remoteDB
+	// Swap provider to point at remote
+	r.Provider = direct.New(remoteDB)
 	return r, nil
 }

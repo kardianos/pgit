@@ -9,6 +9,7 @@ import (
 	"github.com/imgajeed76/pgit/v4/internal/config"
 	"github.com/imgajeed76/pgit/v4/internal/testdb"
 	"github.com/imgajeed76/pgit/v4/internal/util"
+	"github.com/imgajeed76/pgit/v4/provider/direct"
 )
 
 // initTestRepo creates a fresh repo in a temp dir with a DB connection.
@@ -38,9 +39,9 @@ func initTestRepo(t *testing.T) *Repository {
 	d := testdb.Acquire(t)
 
 	repo := &Repository{
-		Root:   dir,
-		Config: cfg,
-		DB:     d,
+		Root:     dir,
+		Config:   cfg,
+		Provider: direct.New(d),
 	}
 
 	return repo

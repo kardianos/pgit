@@ -65,9 +65,9 @@ func (r *Repository) GetWorkingTreeChanges(ctx context.Context) ([]FileChange, e
 	// Get the current tree METADATA from the database (no content - much faster!)
 	// We only need paths and content hashes for comparison
 	var currentTree []*db.Blob
-	if r.DB != nil {
+	if r.Provider != nil {
 		var err error
-		currentTree, err = r.DB.GetCurrentTreeMetadata(ctx)
+		currentTree, err = r.Provider.GetCurrentTreeMetadata(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -289,14 +289,14 @@ func (r *Repository) StageFile(ctx context.Context, path string) error {
 
 	// Check if file exists in current tree (only need to check existence, not load all files)
 	inTree := false
-	if r.DB != nil {
-		headID, err := r.DB.GetHead(ctx)
+	if r.Provider != nil {
+		headID, err := r.Provider.GetHead(ctx)
 		if err != nil {
 			return err
 		}
 		if headID != "" {
 			// Use FileExistsInTree to check if file is tracked (fast, no content load)
-			inTree, err = r.DB.FileExistsInTree(ctx, path, headID)
+			inTree, err = r.Provider.FileExistsInTree(ctx, path, headID)
 			if err != nil {
 				return err
 			}

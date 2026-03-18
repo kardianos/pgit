@@ -163,7 +163,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 	defer r.Close()
 
 	// Check if local database already has data
-	schemaExists, err := r.DB.SchemaExists(ctx)
+	schemaExists, err := r.Provider.SchemaExists(ctx)
 	if err != nil {
 		os.RemoveAll(absDir)
 		return err
@@ -171,7 +171,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 
 	if schemaExists {
 		// Check if there are commits
-		localHeadID, _ := r.DB.GetHead(ctx)
+		localHeadID, _ := r.Provider.GetHead(ctx)
 		if localHeadID != "" {
 			if !cloneForce {
 				fmt.Printf("%s Local database '%s' already contains data.\n",
@@ -193,11 +193,11 @@ func runClone(cmd *cobra.Command, args []string) error {
 	}
 
 	// Drop and recreate schema to ensure clean slate
-	if err := r.DB.DropSchema(ctx); err != nil {
+	if err := r.Provider.DropSchema(ctx); err != nil {
 		os.RemoveAll(absDir)
 		return fmt.Errorf("failed to clean local database: %w", err)
 	}
-	if err := r.DB.InitSchema(ctx); err != nil {
+	if err := r.Provider.InitSchema(ctx); err != nil {
 		os.RemoveAll(absDir)
 		return fmt.Errorf("failed to init local database: %w", err)
 	}
@@ -223,7 +223,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 			batch := commits[i:end]
 
 			// Batch insert commits
-			if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+			if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 				os.RemoveAll(absDir)
 				return fmt.Errorf("failed to create commits: %w", err)
 			}
@@ -236,7 +236,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 					return err
 				}
 				if len(blobs) > 0 {
-					if err := r.DB.CreateBlobs(ctx, blobs); err != nil {
+					if err := r.Provider.CreateBlobs(ctx, blobs); err != nil {
 						os.RemoveAll(absDir)
 						return fmt.Errorf("failed to create blobs for %s: %w", util.ShortID(commit.ID), err)
 					}
@@ -248,20 +248,20 @@ func runClone(cmd *cobra.Command, args []string) error {
 		progress.Done()
 
 		// Set HEAD
-		if err := r.DB.SetHead(ctx, remoteHeadID); err != nil {
+		if err := r.Provider.SetHead(ctx, remoteHeadID); err != nil {
 			os.RemoveAll(absDir)
 			return err
 		}
 
 		// Set sync state
-		if err := r.DB.SetSyncState(ctx, "origin", &remoteHeadID); err != nil {
+		if err := r.Provider.SetSyncState(ctx, "origin", &remoteHeadID); err != nil {
 			os.RemoveAll(absDir)
 			return err
 		}
 
 		// Checkout working directory
 		fmt.Println("Checking out files...")
-		tree, err := r.DB.GetTreeAtCommit(ctx, remoteHeadID)
+		tree, err := r.Provider.GetTreeAtCommit(ctx, remoteHeadID)
 		if err != nil {
 			os.RemoveAll(absDir)
 			return err

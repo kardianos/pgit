@@ -101,7 +101,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		}
 	} else if !searchAll {
 		// Default: search at HEAD
-		headID, err := r.DB.GetHead(ctx)
+		headID, err := r.Provider.GetHead(ctx)
 		if err != nil {
 			return err
 		}
@@ -126,9 +126,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	var searchResults []*db.SearchContentResult
 	if searchAll {
 		searchOpts.CommitID = "" // Search all versions
-		searchResults, err = r.DB.SearchContent(ctx, searchOpts)
+		searchResults, err = r.Provider.SearchContent(ctx, searchOpts)
 	} else {
-		searchResults, err = r.DB.SearchContentAtCommit(ctx, commitID, searchOpts)
+		searchResults, err = r.Provider.SearchContentAtCommit(ctx, commitID, searchOpts)
 	}
 	spinner.Stop()
 
@@ -155,7 +155,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			commitIDs = append(commitIDs, sr.CommitID)
 		}
 	}
-	commitMap, _ := r.DB.GetCommitsBatchByRange(ctx, commitIDs)
+	commitMap, _ := r.Provider.GetCommitsBatchByRange(ctx, commitIDs)
 
 	getCommitTime := func(cid string) time.Time {
 		if c, ok := commitMap[cid]; ok {

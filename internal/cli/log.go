@@ -83,15 +83,15 @@ func runLog(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		commits, err = r.DB.GetCommitLogFrom(ctx, commitID, maxCount)
+		commits, err = r.Provider.GetCommitLogFrom(ctx, commitID, maxCount)
 		if err != nil {
 			return err
 		}
 		// Only show HEAD label if the resolved commit actually is HEAD
-		headID, _ := r.DB.GetHead(ctx)
+		headID, _ := r.Provider.GetHead(ctx)
 		isFromHead = len(commits) > 0 && commits[0].ID == headID
 	} else {
-		commits, err = r.DB.GetCommitLog(ctx, maxCount)
+		commits, err = r.Provider.GetCommitLog(ctx, maxCount)
 		if err != nil {
 			return err
 		}

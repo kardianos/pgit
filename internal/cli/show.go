@@ -76,7 +76,7 @@ func showCommitDetails(ctx context.Context, r *repo.Repository, ref string, show
 		return err
 	}
 
-	commit, err := r.DB.GetCommit(ctx, commitID)
+	commit, err := r.Provider.GetCommit(ctx, commitID)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func showCommitDetails(ctx context.Context, r *repo.Repository, ref string, show
 	}
 
 	// Get changes in this commit
-	blobs, err := r.DB.GetBlobsAtCommit(ctx, commitID)
+	blobs, err := r.Provider.GetBlobsAtCommit(ctx, commitID)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func showCommitDetails(ctx context.Context, r *repo.Repository, ref string, show
 		for _, blob := range blobs {
 			path := blob.Path
 			g.Go(func() error {
-				parentBlob, err := r.DB.GetFileAtCommit(gCtx, path, parentID)
+				parentBlob, err := r.Provider.GetFileAtCommit(gCtx, path, parentID)
 				if err == nil && parentBlob != nil {
 					mu.Lock()
 					parentBlobs[parentBlob.Path] = parentBlob.Content
@@ -272,7 +272,7 @@ func resolveCommitRef(ctx context.Context, r *repo.Repository, ref string) (stri
 	// The graph table is a normal heap table with pre-computed power-of-2
 	// ancestor pointers, so HEAD~5000 takes ~13 B-tree lookups instead of
 	// 5000 xpatch decompressions.
-	ancestorID, err := r.DB.GetAncestorID(ctx, commitID, ancestorCount)
+	ancestorID, err := r.Provider.GetAncestorID(ctx, commitID, ancestorCount)
 	if err != nil {
 		return "", util.NewError("Cannot go back further").
 			WithMessage(fmt.Sprintf("Cannot resolve %s~%d: %v", baseRef, ancestorCount, err)).
@@ -320,7 +320,7 @@ func parseAncestorNotation(ref string) (string, int) {
 func resolveBaseRef(ctx context.Context, r *repo.Repository, ref string) (string, error) {
 	// Handle HEAD
 	if ref == "HEAD" {
-		headID, err := r.DB.GetHead(ctx)
+		headID, err := r.Provider.GetHead(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -334,7 +334,7 @@ func resolveBaseRef(ctx context.Context, r *repo.Repository, ref string) (string
 	refUpper := strings.ToUpper(ref)
 
 	// Try exact match on the graph table (heap B-tree, instant)
-	exists, err := r.DB.CommitExistsInGraph(ctx, refUpper)
+	exists, err := r.Provider.CommitExistsInGraph(ctx, refUpper)
 	if err != nil {
 		return "", err
 	}
@@ -343,7 +343,7 @@ func resolveBaseRef(ctx context.Context, r *repo.Repository, ref string) (string
 	}
 
 	// Try partial prefix match on the graph table (heap B-tree range scan)
-	fullID, err := r.DB.FindCommitByPartialIDInGraph(ctx, refUpper)
+	fullID, err := r.Provider.FindCommitByPartialIDInGraph(ctx, refUpper)
 	if err != nil {
 		var ambErr *db.AmbiguousCommitError
 		if errors.As(err, &ambErr) {
@@ -356,7 +356,7 @@ func resolveBaseRef(ctx context.Context, r *repo.Repository, ref string) (string
 	}
 
 	// Fall back to suffix match on pgit_file_refs (normal table)
-	commit, err := r.DB.FindCommitByPartialID(ctx, refUpper)
+	commit, err := r.Provider.FindCommitByPartialID(ctx, refUpper)
 	if err != nil {
 		var ambErr *db.AmbiguousCommitError
 		if errors.As(err, &ambErr) {
@@ -377,7 +377,7 @@ func showFileAtCommit(ctx context.Context, r *repo.Repository, ref, path string)
 		return err
 	}
 
-	blob, err := r.DB.GetFileAtCommit(ctx, path, commitID)
+	blob, err := r.Provider.GetFileAtCommit(ctx, path, commitID)
 	if err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func formatAmbiguousError(ctx context.Context, r *repo.Repository, ambErr *db.Am
 	// Build candidate list with commit metadata
 	var lines []string
 	for _, id := range ambErr.MatchIDs {
-		c, err := r.DB.GetCommit(ctx, id)
+		c, err := r.Provider.GetCommit(ctx, id)
 		if err != nil || c == nil {
 			lines = append(lines, util.ShortID(id))
 			continue

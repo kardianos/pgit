@@ -64,7 +64,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get current HEAD
-	head, err := r.DB.GetHeadCommit(ctx)
+	head, err := r.Provider.GetHeadCommit(ctx)
 	if err != nil {
 		return err
 	}

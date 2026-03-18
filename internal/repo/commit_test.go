@@ -43,7 +43,7 @@ func TestCommitCreatesCommitAndClearsIndex(t *testing.T) {
 			}
 
 			// Verify HEAD is updated
-			headID, err := r.DB.GetHead(ctx)
+			headID, err := r.DB().GetHead(ctx)
 			if err != nil {
 				t.Fatalf("GetHead: %v", err)
 			}
@@ -118,7 +118,7 @@ func TestSequentialCommits(t *testing.T) {
 			}
 
 			// Verify log shows all commits
-			log, err := r.DB.GetCommitLog(ctx, 10)
+			log, err := r.DB().GetCommitLog(ctx, 10)
 			if err != nil {
 				t.Fatalf("GetCommitLog: %v", err)
 			}

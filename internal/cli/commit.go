@@ -67,7 +67,7 @@ func runCommit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get parent commit BEFORE we create new commit (for diff stats)
-	parentHeadID, _ := r.DB.GetHead(ctx)
+	parentHeadID, _ := r.Provider.GetHead(ctx)
 	var parentCommitID string
 	if parentHeadID != "" {
 		parentCommitID = parentHeadID
@@ -149,9 +149,9 @@ func runCommit(cmd *cobra.Command, args []string) error {
 
 		case repo.StatusDeleted:
 			// Deleted - count all lines as deletions
-			headID, _ := r.DB.GetHead(ctx)
+			headID, _ := r.Provider.GetHead(ctx)
 			if headID != "" {
-				if blob, err := r.DB.GetFileAtCommit(ctx, c.Path, headID); err == nil && blob != nil {
+				if blob, err := r.Provider.GetFileAtCommit(ctx, c.Path, headID); err == nil && blob != nil {
 					lines := strings.Count(string(blob.Content), "\n")
 					if len(blob.Content) > 0 && blob.Content[len(blob.Content)-1] != '\n' {
 						lines++
@@ -184,7 +184,7 @@ func countDiffStats(ctx context.Context, r *repo.Repository, path string, parent
 		return 0, 0
 	}
 
-	blob, err := r.DB.GetFileAtCommit(ctx, path, parentCommitID)
+	blob, err := r.Provider.GetFileAtCommit(ctx, path, parentCommitID)
 	if err != nil || blob == nil {
 		return 0, 0
 	}

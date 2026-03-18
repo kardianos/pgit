@@ -67,7 +67,7 @@ func (r *Repository) Commit(ctx context.Context, opts CommitOptions) (*db.Commit
 
 	// Get parent commit
 	var parentID *string
-	headID, err := r.DB.GetHead(ctx)
+	headID, err := r.Provider.GetHead(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (r *Repository) Commit(ctx context.Context, opts CommitOptions) (*db.Commit
 	// First, get the current tree to carry forward unchanged files
 	var currentTree []*db.Blob
 	if headID != "" {
-		currentTree, err = r.DB.GetTreeMetadataAtCommit(ctx, headID)
+		currentTree, err = r.Provider.GetTreeMetadataAtCommit(ctx, headID)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +189,7 @@ func (r *Repository) Commit(ctx context.Context, opts CommitOptions) (*db.Commit
 	}
 
 	// Create everything in a single transaction
-	err = r.DB.WithTx(ctx, func(tx pgx.Tx) error {
+	err = r.Provider.WithTx(ctx, func(tx pgx.Tx) error {
 		// Create commit first
 		_, err := tx.Exec(ctx, `
 			INSERT INTO pgit_commits (id, parent_id, tree_hash, message, author_name, author_email, authored_at, committer_name, committer_email, committed_at)
@@ -201,8 +201,8 @@ func (r *Repository) Commit(ctx context.Context, opts CommitOptions) (*db.Commit
 			return err
 		}
 
-		// Create blobs using the new schema
-		if err := r.DB.CreateBlobs(ctx, blobs); err != nil {
+		// Create blobs within the same transaction
+		if err := r.Provider.CreateBlobsTx(ctx, tx, blobs); err != nil {
 			return err
 		}
 

@@ -83,7 +83,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get local HEAD
-	localHeadID, err := r.DB.GetHead(ctx)
+	localHeadID, err := r.Provider.GetHead(ctx)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	// Check for divergence (no limit — just check if remote HEAD exists locally)
 	if remoteHeadID != "" && !force {
-		localHasRemoteHead, err := r.DB.CommitExists(ctx, remoteHeadID)
+		localHasRemoteHead, err := r.Provider.CommitExists(ctx, remoteHeadID)
 		if err != nil {
 			return err
 		}
@@ -128,10 +128,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 	var commitsToPush []*db.Commit
 	if remoteHeadID == "" {
 		// First push: push everything
-		commitsToPush, err = r.DB.GetAllCommits(ctx)
+		commitsToPush, err = r.Provider.GetAllCommits(ctx)
 	} else {
 		// Incremental push: only commits after remote HEAD
-		commitsToPush, err = r.DB.GetCommitsAfter(ctx, remoteHeadID)
+		commitsToPush, err = r.Provider.GetCommitsAfter(ctx, remoteHeadID)
 	}
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 			// Insert blobs per commit within same tx
 			for _, commit := range batch {
-				blobs, err := r.DB.GetBlobsAtCommit(ctx, commit.ID)
+				blobs, err := r.Provider.GetBlobsAtCommit(ctx, commit.ID)
 				if err != nil {
 					return err
 				}
@@ -186,7 +186,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update sync state
-	if err := r.DB.SetSyncState(ctx, remoteName, &localHeadID); err != nil {
+	if err := r.Provider.SetSyncState(ctx, remoteName, &localHeadID); err != nil {
 		return err
 	}
 

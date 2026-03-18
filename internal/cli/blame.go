@@ -45,7 +45,7 @@ func runBlame(cmd *cobra.Command, args []string) error {
 	defer r.Close()
 
 	// Get current file content at HEAD
-	headID, err := r.DB.GetHead(ctx)
+	headID, err := r.Provider.GetHead(ctx)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func runBlame(cmd *cobra.Command, args []string) error {
 		return util.ErrNoCommits
 	}
 
-	currentBlob, err := r.DB.GetFileAtCommit(ctx, path, headID)
+	currentBlob, err := r.Provider.GetFileAtCommit(ctx, path, headID)
 	if err != nil {
 		return err
 	}
@@ -63,14 +63,14 @@ func runBlame(cmd *cobra.Command, args []string) error {
 
 	// Get file ref history (metadata only, from pgit_file_refs — normal table, fast).
 	// Ordered by commit_id DESC (newest first).
-	pathID, groupID, err := r.DB.GetPathIDAndGroupIDByPath(ctx, path)
+	pathID, groupID, err := r.Provider.GetPathIDAndGroupIDByPath(ctx, path)
 	if err != nil {
 		return err
 	}
 	if pathID == 0 {
 		return util.ErrFileNotFound
 	}
-	refs, err := r.DB.GetFileRefHistory(ctx, pathID)
+	refs, err := r.Provider.GetFileRefHistory(ctx, pathID)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func runBlame(cmd *cobra.Command, args []string) error {
 	// This is the fastest xpatch access pattern: one Index Scan through the
 	// delta chain, decompressing sequentially. We then iterate in reverse in
 	// Go for the blame algorithm (newest→oldest, pinning lines as they diverge).
-	allContent, err := r.DB.GetAllContentForGroup(ctx, groupID, isBinary)
+	allContent, err := r.Provider.GetAllContentForGroup(ctx, groupID, isBinary)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func runBlame(cmd *cobra.Command, args []string) error {
 		uniqueIDs = append(uniqueIDs, id)
 	}
 
-	commitMap, err := r.DB.GetCommitsBatchByRange(ctx, uniqueIDs)
+	commitMap, err := r.Provider.GetCommitsBatchByRange(ctx, uniqueIDs)
 	if err != nil {
 		return err
 	}

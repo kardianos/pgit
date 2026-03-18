@@ -194,7 +194,7 @@ func runCommitDiff(ctx context.Context, r *repo.Repository, fromRef, toRef strin
 	if toID != "" {
 		// Commit-to-commit diff: get only changed paths between the two commits,
 		// then fetch old/new content per file via scoped xpatch queries.
-		changedMeta, err := r.DB.GetChangedFilesMetadata(ctx, fromID, toID)
+		changedMeta, err := r.Provider.GetChangedFilesMetadata(ctx, fromID, toID)
 		if err != nil {
 			return err
 		}
@@ -220,8 +220,8 @@ func runCommitDiff(ctx context.Context, r *repo.Repository, fromRef, toRef strin
 		var mu sync.Mutex
 		for path := range changedPaths {
 			g.Go(func() error {
-				oldBlob, _ := r.DB.GetFileAtCommit(gCtx, path, fromID)
-				newBlob, _ := r.DB.GetFileAtCommit(gCtx, path, toID)
+				oldBlob, _ := r.Provider.GetFileAtCommit(gCtx, path, fromID)
+				newBlob, _ := r.Provider.GetFileAtCommit(gCtx, path, toID)
 
 				oldContent := ""
 				newContent := ""
@@ -270,7 +270,7 @@ func runCommitDiff(ctx context.Context, r *repo.Repository, fromRef, toRef strin
 	} else {
 		// Commit-to-working-tree diff: get tree metadata (no content, fast)
 		// then compare hashes against working tree files.
-		treeMeta, err := r.DB.GetTreeMetadataAtCommit(ctx, fromID)
+		treeMeta, err := r.Provider.GetTreeMetadataAtCommit(ctx, fromID)
 		if err != nil {
 			return err
 		}
@@ -297,7 +297,7 @@ func runCommitDiff(ctx context.Context, r *repo.Repository, fromRef, toRef strin
 				wtContent, err := os.ReadFile(absPath)
 				if err != nil {
 					// File deleted in working tree
-					oldBlob, err := r.DB.GetFileAtCommit(gCtx, path, fromID)
+					oldBlob, err := r.Provider.GetFileAtCommit(gCtx, path, fromID)
 					if err != nil || oldBlob == nil {
 						return nil
 					}
@@ -322,7 +322,7 @@ func runCommitDiff(ctx context.Context, r *repo.Repository, fromRef, toRef strin
 				}
 
 				// Content differs — fetch old content
-				oldBlob, err := r.DB.GetFileAtCommit(gCtx, path, fromID)
+				oldBlob, err := r.Provider.GetFileAtCommit(gCtx, path, fromID)
 				if err != nil || oldBlob == nil {
 					return nil
 				}

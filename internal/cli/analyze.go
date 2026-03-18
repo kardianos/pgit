@@ -256,7 +256,7 @@ func runAnalyzeChurn(cmd *cobra.Command, args []string) error {
 	spinner.Start()
 
 	// Query: count file refs per path (heap tables only, no xpatch)
-	rows, err := r.DB.Query(ctx, `
+	rows, err := r.Provider.Query(ctx, `
 		SELECT p.path, COUNT(*) as versions
 		FROM pgit_file_refs r
 		JOIN pgit_paths p ON p.path_id = r.path_id
@@ -348,7 +348,7 @@ func runAnalyzeCoupling(cmd *cobra.Command, args []string) error {
 	spinner.Start()
 
 	// Step 1: Fetch all (commit_id, path_id) pairs from heap table
-	rows, err := r.DB.Query(ctx, `
+	rows, err := r.Provider.Query(ctx, `
 		SELECT commit_id, path_id
 		FROM pgit_file_refs
 		ORDER BY commit_id
@@ -373,7 +373,7 @@ func runAnalyzeCoupling(cmd *cobra.Command, args []string) error {
 	rows.Close()
 
 	// Step 2: Fetch path_id -> path mapping
-	pathRows, err := r.DB.Query(ctx, `SELECT path_id, path FROM pgit_paths`)
+	pathRows, err := r.Provider.Query(ctx, `SELECT path_id, path FROM pgit_paths`)
 	if err != nil {
 		spinner.Stop()
 		return err
@@ -504,7 +504,7 @@ func runAnalyzeHotspots(cmd *cobra.Command, args []string) error {
 	spinner.Start()
 
 	// Same base query as churn
-	rows, err := r.DB.Query(ctx, `
+	rows, err := r.Provider.Query(ctx, `
 		SELECT p.path, COUNT(*) as versions
 		FROM pgit_file_refs r
 		JOIN pgit_paths p ON p.path_id = r.path_id
@@ -634,7 +634,7 @@ func runAnalyzeAuthors(cmd *cobra.Command, args []string) error {
 	// Front-to-back sequential scan — optimal xpatch access pattern.
 	// ORDER BY authored_at ASC decompresses the delta chain in natural order,
 	// each row reusing the previous row's cached decompression result.
-	rows, err := r.DB.Query(ctx, `
+	rows, err := r.Provider.Query(ctx, `
 		SELECT author_name, author_email, authored_at
 		FROM pgit_commits
 		ORDER BY authored_at ASC
@@ -756,7 +756,7 @@ func runAnalyzeActivity(cmd *cobra.Command, args []string) error {
 	spinner.Start()
 
 	// Front-to-back sequential scan — optimal xpatch access pattern
-	rows, err := r.DB.Query(ctx, `
+	rows, err := r.Provider.Query(ctx, `
 		SELECT authored_at
 		FROM pgit_commits
 		ORDER BY authored_at ASC
@@ -965,7 +965,7 @@ func runAnalyzeBusFactor(cmd *cobra.Command, args []string) error {
 	// Front-to-back sequential scan (ORDER BY authored_at ASC) is the
 	// optimal xpatch access pattern — each row reuses the previous
 	// row's cached decompression result.
-	commitRows, err := r.DB.Query(ctx, `
+	commitRows, err := r.Provider.Query(ctx, `
 		SELECT id, author_name
 		FROM pgit_commits
 		ORDER BY authored_at ASC
@@ -988,7 +988,7 @@ func runAnalyzeBusFactor(cmd *cobra.Command, args []string) error {
 	commitRows.Close()
 
 	// Step 2: Scan file_refs (heap table, fast) and resolve authors
-	refRows, err := r.DB.Query(ctx, `
+	refRows, err := r.Provider.Query(ctx, `
 		SELECT path_id, commit_id
 		FROM pgit_file_refs
 	`)
@@ -1019,7 +1019,7 @@ func runAnalyzeBusFactor(cmd *cobra.Command, args []string) error {
 	refRows.Close()
 
 	// Step 3: Fetch path_id -> path mapping
-	pathRows, err := r.DB.Query(ctx, `SELECT path_id, path FROM pgit_paths`)
+	pathRows, err := r.Provider.Query(ctx, `SELECT path_id, path FROM pgit_paths`)
 	if err != nil {
 		spinner.Stop()
 		return err

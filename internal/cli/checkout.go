@@ -105,7 +105,7 @@ func runCheckout(cmd *cobra.Command, args []string) error {
 
 func checkoutPath(ctx context.Context, r *repo.Repository, commitID, path string, force bool) error {
 	// Get file at commit
-	blob, err := r.DB.GetFileAtCommit(ctx, path, commitID)
+	blob, err := r.Provider.GetFileAtCommit(ctx, path, commitID)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func checkoutFull(ctx context.Context, r *repo.Repository, commitID string, forc
 	}
 
 	// Get tree at commit
-	tree, err := r.DB.GetTreeAtCommit(ctx, commitID)
+	tree, err := r.Provider.GetTreeAtCommit(ctx, commitID)
 	if err != nil {
 		return err
 	}
@@ -202,9 +202,9 @@ func checkoutFull(ctx context.Context, r *repo.Repository, commitID string, forc
 
 	// Remove files that shouldn't exist at this commit
 	// Get current tree
-	headID, _ := r.DB.GetHead(ctx)
+	headID, _ := r.Provider.GetHead(ctx)
 	if headID != "" {
-		currentTree, _ := r.DB.GetTreeAtCommit(ctx, headID)
+		currentTree, _ := r.Provider.GetTreeAtCommit(ctx, headID)
 		for _, blob := range currentTree {
 			if !keepFiles[blob.Path] {
 				absPath := r.AbsPath(blob.Path)
@@ -214,7 +214,7 @@ func checkoutFull(ctx context.Context, r *repo.Repository, commitID string, forc
 	}
 
 	// Update HEAD
-	if err := r.DB.SetHead(ctx, commitID); err != nil {
+	if err := r.Provider.SetHead(ctx, commitID); err != nil {
 		return err
 	}
 

@@ -161,11 +161,11 @@ func isBinary(data []byte) bool {
 
 // getFileContent gets the content of a file at HEAD
 func (r *Repository) getFileContent(ctx context.Context, path string) (*db.Blob, error) {
-	headID, err := r.DB.GetHead(ctx)
+	headID, err := r.Provider.GetHead(ctx)
 	if err != nil || headID == "" {
 		return nil, err
 	}
-	return r.DB.GetFileAtCommit(ctx, path, headID)
+	return r.Provider.GetFileAtCommit(ctx, path, headID)
 }
 
 // GenerateHunks creates diff hunks from old and new content

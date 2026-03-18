@@ -21,6 +21,7 @@ import (
 	"github.com/imgajeed76/pgit/v4/internal/config"
 	"github.com/imgajeed76/pgit/v4/internal/db"
 	"github.com/imgajeed76/pgit/v4/internal/repo"
+	"github.com/imgajeed76/pgit/v4/provider/direct"
 	"github.com/imgajeed76/pgit/v4/internal/ui"
 	"github.com/imgajeed76/pgit/v4/internal/ui/styles"
 	"github.com/imgajeed76/pgit/v4/internal/util"
@@ -185,7 +186,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 		defer remoteDB.Close()
 
-		r.DB = remoteDB
+		r.Provider = direct.New(remoteDB)
 
 		// Initialize schema if needed
 		schemaExists, err := remoteDB.SchemaExists(ctx)
@@ -209,11 +210,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 		defer r.Close()
 	}
 
-	// Set session-level GUCs for import performance
-	if err := r.DB.SetImportGUCs(ctx); err != nil {
-		fmt.Printf("Warning: failed to set import GUCs: %v\n", err)
+	// Set session-level GUCs for import performance (direct provider only)
+	if d := r.DB(); d != nil {
+		if err := d.SetImportGUCs(ctx); err != nil {
+			fmt.Printf("Warning: failed to set import GUCs: %v\n", err)
+		}
+		defer func() { _ = d.ResetImportGUCs(ctx) }()
 	}
-	defer func() { _ = r.DB.ResetImportGUCs(ctx) }()
 
 	fmt.Printf("Importing from: %s\n", styles.Cyan(gitPath))
 	fmt.Printf("Workers: %d\n", workers)
@@ -224,7 +227,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	// Check if database already has commits and determine resume state
 	var existingCommits int
-	_ = r.DB.QueryRow(ctx, "SELECT COUNT(*) FROM pgit_commits").Scan(&existingCommits)
+	_ = r.Provider.QueryRow(ctx, "SELECT COUNT(*) FROM pgit_commits").Scan(&existingCommits)
 
 	resumeFromBlobs := false
 
@@ -232,8 +235,8 @@ func runImport(cmd *cobra.Command, args []string) error {
 		// --force always wipes, handled below
 	} else if existingCommits > 0 && resume {
 		// --resume: validate we have a resumable state
-		importState, _ := r.DB.GetMetadata(ctx, "import_state")
-		importBranch, _ := r.DB.GetMetadata(ctx, "import_branch")
+		importState, _ := r.Provider.GetMetadata(ctx, "import_state")
+		importBranch, _ := r.Provider.GetMetadata(ctx, "import_branch")
 		switch importState {
 		case "commits_done":
 			resumeFromBlobs = true
@@ -250,7 +253,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			// No import_state — either partial commit phase or old version crash.
 			// Either way: skip already-inserted commits, continue from where we left off.
 			resumeFromBlobs = true
-			importBranch, _ := r.DB.GetMetadata(ctx, "import_branch")
+			importBranch, _ := r.Provider.GetMetadata(ctx, "import_branch")
 			fmt.Printf("Resuming interrupted import (%s commits found in database)\n",
 				ui.FormatCount(existingCommits))
 			if importBranch != "" {
@@ -259,7 +262,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 	} else if existingCommits > 0 {
 		// No --force, no --resume: tell user what to do
-		importState, _ := r.DB.GetMetadata(ctx, "import_state")
+		importState, _ := r.Provider.GetMetadata(ctx, "import_state")
 		switch importState {
 		case "complete":
 			return util.NewError("Database not empty").
@@ -382,10 +385,10 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// Clear existing data if --force
 	if existingCommits > 0 && force {
 		fmt.Println("\nClearing existing data...")
-		if err := r.DB.DropSchema(ctx); err != nil {
+		if err := r.Provider.DropSchema(ctx); err != nil {
 			return fmt.Errorf("failed to clear database: %w", err)
 		}
-		if err := r.DB.InitSchema(ctx); err != nil {
+		if err := r.Provider.InitSchema(ctx); err != nil {
 			return fmt.Errorf("failed to reinit database: %w", err)
 		}
 	}
@@ -413,7 +416,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		// rebuild the markToULID mapping with the real ULIDs (freshly
 		// generated ones have different random entropy).
 
-		dbCommitIDs, err := r.DB.GetAllCommitIDsOrdered(ctx)
+		dbCommitIDs, err := r.Provider.GetAllCommitIDsOrdered(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to read existing commits for resume: %w", err)
 		}
@@ -495,7 +498,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 				}
 				batch := remainingCommits[i:end]
 
-				if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+				if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 					fmt.Println()
 					return fmt.Errorf("failed to insert commits batch: %w", err)
 				}
@@ -505,11 +508,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 
 		// Mark commits as done (idempotent if already set)
-		_ = r.DB.SetMetadata(ctx, "import_state", "commits_done")
+		_ = r.Provider.SetMetadata(ctx, "import_state", "commits_done")
 	} else {
 		// Fresh import: insert all commits
-		_ = r.DB.SetMetadata(ctx, "import_branch", selectedBranch)
-		_ = r.DB.SetMetadata(ctx, "import_expected_commits", fmt.Sprintf("%d", len(pgitCommits)))
+		_ = r.Provider.SetMetadata(ctx, "import_branch", selectedBranch)
+		_ = r.Provider.SetMetadata(ctx, "import_expected_commits", fmt.Sprintf("%d", len(pgitCommits)))
 
 		fmt.Println("\nImporting commits...")
 
@@ -523,7 +526,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			}
 			batch := pgitCommits[i:end]
 
-			if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+			if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 				fmt.Println()
 				return fmt.Errorf("failed to insert commits batch: %w", err)
 			}
@@ -532,14 +535,14 @@ func runImport(cmd *cobra.Command, args []string) error {
 		commitProgress.Done()
 
 		// Mark commits as done — this is the resume checkpoint
-		_ = r.DB.SetMetadata(ctx, "import_state", "commits_done")
+		_ = r.Provider.SetMetadata(ctx, "import_state", "commits_done")
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
 	// Step 4b: Build and insert commit graph with binary lifting
 	// ═══════════════════════════════════════════════════════════════════════
 
-	graphState, _ := r.DB.GetMetadata(ctx, "import_graph_state")
+	graphState, _ := r.Provider.GetMetadata(ctx, "import_graph_state")
 	if graphState != "done" {
 		fmt.Println("\nBuilding commit graph...")
 		graphEntries := buildCommitGraph(pgitCommits)
@@ -557,7 +560,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			}
 			batch := graphEntries[i:end]
 
-			if err := r.DB.CreateCommitGraphBatch(ctx, batch); err != nil {
+			if err := r.Provider.CreateCommitGraphBatch(ctx, batch); err != nil {
 				fmt.Println()
 				return fmt.Errorf("failed to insert commit graph batch: %w", err)
 			}
@@ -565,7 +568,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 		graphProgress.Done()
 
-		_ = r.DB.SetMetadata(ctx, "import_graph_state", "done")
+		_ = r.Provider.SetMetadata(ctx, "import_graph_state", "done")
 	}
 
 	// Save HEAD commit info before releasing pgitCommits.
@@ -583,7 +586,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	// When resuming, filter out already-imported paths
 	if resumeFromBlobs {
-		importedPaths, err := r.DB.GetImportedPaths(ctx)
+		importedPaths, err := r.Provider.GetImportedPaths(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to query imported paths: %w", err)
 		}
@@ -647,17 +650,21 @@ func runImport(cmd *cobra.Command, args []string) error {
 		// cold storage). By keeping commits indexes intact, we avoid a
 		// multi-hour rebuild at Linux kernel scale.
 		fmt.Print("Dropping indexes for bulk import...")
-		if err := r.DB.DropBlobPhaseIndexes(ctx); err != nil {
+		if err := r.Provider.DropBlobPhaseIndexes(ctx); err != nil {
 			fmt.Printf(" warning: %v\n", err)
 		} else {
 			fmt.Println(" done")
 		}
 
-		err = importBlobsParallel(ctx, r.DB, tmpPath, pathOps, blobIndex, markToULID, workers, resumeFromBlobs, pathToLocalGroup, commitTimestamps)
+		importDB := r.DB()
+		if importDB == nil {
+			return fmt.Errorf("import requires a direct database connection")
+		}
+		err = importBlobsParallel(ctx, importDB, tmpPath, pathOps, blobIndex, markToULID, workers, resumeFromBlobs, pathToLocalGroup, commitTimestamps)
 		if err != nil {
 			// Still try to recreate indexes even on error
 			fmt.Print("\nRebuilding indexes...")
-			if idxErr := r.DB.CreateBlobPhaseIndexes(ctx); idxErr != nil {
+			if idxErr := r.Provider.CreateBlobPhaseIndexes(ctx); idxErr != nil {
 				fmt.Printf(" warning: %v\n", idxErr)
 			} else {
 				fmt.Println(" done")
@@ -668,7 +675,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		// Rebuild file_refs and paths indexes after blob import
 		fmt.Print("Rebuilding indexes...")
 		rebuildStart := time.Now()
-		if err := r.DB.CreateBlobPhaseIndexes(ctx); err != nil {
+		if err := r.Provider.CreateBlobPhaseIndexes(ctx); err != nil {
 			return fmt.Errorf("failed to rebuild indexes: %w", err)
 		}
 		fmt.Printf(" done (%s)\n", time.Since(rebuildStart).Round(time.Second))
@@ -678,7 +685,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// Step 6: Set HEAD
 	// ═══════════════════════════════════════════════════════════════════════
 
-	if err := r.DB.SetHead(ctx, headCommitID); err != nil {
+	if err := r.Provider.SetHead(ctx, headCommitID); err != nil {
 		return fmt.Errorf("failed to set HEAD: %w", err)
 	}
 
@@ -688,7 +695,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	if !isRemote {
 		fmt.Printf("\nChecking out files...\n")
-		tree, err := r.DB.GetTreeAtCommit(ctx, headCommitID)
+		tree, err := r.Provider.GetTreeAtCommit(ctx, headCommitID)
 		if err != nil {
 			return fmt.Errorf("failed to get tree: %w", err)
 		}
@@ -712,7 +719,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	// Mark import as complete
-	_ = r.DB.SetMetadata(ctx, "import_state", "complete")
+	_ = r.Provider.SetMetadata(ctx, "import_state", "complete")
 
 	// Clean up temp file on success (preserved on crash for --fastexport reuse)
 	if ownsTmpFile {

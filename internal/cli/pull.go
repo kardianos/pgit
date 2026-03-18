@@ -113,7 +113,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get local HEAD
-	localHeadID, err := r.DB.GetHead(ctx)
+	localHeadID, err := r.Provider.GetHead(ctx)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if remote HEAD exists locally (we're ahead, nothing to pull)
-	remoteExistsLocally, err := r.DB.CommitExists(ctx, remoteHeadID)
+	remoteExistsLocally, err := r.Provider.CommitExists(ctx, remoteHeadID)
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,11 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	// Diverged: find common ancestor via cross-DB walk
-	commonAncestor, err := findCommonAncestorCrossDB(ctx, r.DB, remoteDB, remoteHeadID)
+	localDB := r.DB()
+	if localDB == nil {
+		return fmt.Errorf("pull requires a direct database connection")
+	}
+	commonAncestor, err := findCommonAncestorCrossDB(ctx, localDB, remoteDB, remoteHeadID)
 	if err != nil {
 		return err
 	}
@@ -190,9 +194,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 	// Get local commits since common ancestor
 	var localCommitsAfter []*db.Commit
 	if commonAncestor == "" {
-		localCommitsAfter, err = r.DB.GetAllCommits(ctx)
+		localCommitsAfter, err = r.Provider.GetAllCommits(ctx)
 	} else {
-		localCommitsAfter, err = r.DB.GetCommitsAfter(ctx, commonAncestor)
+		localCommitsAfter, err = r.Provider.GetCommitsAfter(ctx, commonAncestor)
 	}
 	if err != nil {
 		return err
@@ -250,7 +254,7 @@ func pullFastForward(ctx context.Context, r *repo.Repository, remoteDB *db.DB, c
 		batch := commits[i:end]
 
 		// Batch insert commits
-		if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+		if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 			return fmt.Errorf("failed to create commits: %w", err)
 		}
 
@@ -261,7 +265,7 @@ func pullFastForward(ctx context.Context, r *repo.Repository, remoteDB *db.DB, c
 				return err
 			}
 			if len(blobs) > 0 {
-				if err := r.DB.CreateBlobs(ctx, blobs); err != nil {
+				if err := r.Provider.CreateBlobs(ctx, blobs); err != nil {
 					return fmt.Errorf("failed to create blobs for %s: %w", util.ShortID(commit.ID), err)
 				}
 			}
@@ -273,18 +277,18 @@ func pullFastForward(ctx context.Context, r *repo.Repository, remoteDB *db.DB, c
 
 	// Update HEAD
 	lastCommit := commits[len(commits)-1]
-	if err := r.DB.SetHead(ctx, lastCommit.ID); err != nil {
+	if err := r.Provider.SetHead(ctx, lastCommit.ID); err != nil {
 		return err
 	}
 
 	// Update sync state
-	if err := r.DB.SetSyncState(ctx, remoteName, &lastCommit.ID); err != nil {
+	if err := r.Provider.SetSyncState(ctx, remoteName, &lastCommit.ID); err != nil {
 		return err
 	}
 
 	// Update working directory
 	fmt.Println("Updating working directory...")
-	tree, err := r.DB.GetTreeAtCommit(ctx, lastCommit.ID)
+	tree, err := r.Provider.GetTreeAtCommit(ctx, lastCommit.ID)
 	if err != nil {
 		return err
 	}
@@ -334,14 +338,14 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 	fmt.Printf("Remote commits to pull: %d\n", len(remoteCommits))
 
 	// ─── Phase 1: Load trees for three-way comparison ─────────────────
-	localTree, err := r.DB.GetTreeAtCommit(ctx, localHeadID)
+	localTree, err := r.Provider.GetTreeAtCommit(ctx, localHeadID)
 	if err != nil {
 		return err
 	}
 
 	var ancestorTree []*db.Blob
 	if commonAncestor != "" {
-		ancestorTree, err = r.DB.GetTreeAtCommit(ctx, commonAncestor)
+		ancestorTree, err = r.Provider.GetTreeAtCommit(ctx, commonAncestor)
 		if err != nil {
 			return err
 		}
@@ -533,7 +537,7 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 	// Also include any remote commits that already exist locally from a
 	// previous partial pull — they'll be re-pulled fresh after truncation.
 	for _, rc := range remoteCommits {
-		exists, err := r.DB.CommitExists(ctx, rc.ID)
+		exists, err := r.Provider.CommitExists(ctx, rc.ID)
 		if err != nil {
 			return err
 		}
@@ -549,11 +553,11 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 	fmt.Println("Cleaning up diverged commits...")
 
 	if len(allAfterIDs) > 0 {
-		if err := r.DB.DeleteBlobsForCommits(ctx, allAfterIDs); err != nil {
+		if err := r.Provider.DeleteBlobsForCommits(ctx, allAfterIDs); err != nil {
 			return fmt.Errorf("failed to clean up blobs: %w", err)
 		}
 	}
-	if err := r.DB.DeleteCommits(ctx, allAfterIDs); err != nil {
+	if err := r.Provider.DeleteCommits(ctx, allAfterIDs); err != nil {
 		return fmt.Errorf("failed to delete diverged commits: %w", err)
 	}
 
@@ -567,7 +571,7 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 		end := min(i+batchSize, len(remoteCommits))
 		batch := remoteCommits[i:end]
 
-		if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+		if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 			return fmt.Errorf("failed to create commits: %w", err)
 		}
 
@@ -577,7 +581,7 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 				return err
 			}
 			if len(blobs) > 0 {
-				if err := r.DB.CreateBlobs(ctx, blobs); err != nil {
+				if err := r.Provider.CreateBlobs(ctx, blobs); err != nil {
 					return fmt.Errorf("failed to create blobs for %s: %w", util.ShortID(commit.ID), err)
 				}
 			}
@@ -588,10 +592,10 @@ func pullDiverged(ctx context.Context, r *repo.Repository, remoteDB *db.DB, loca
 	progress.Done()
 
 	// Update HEAD to remote
-	if err := r.DB.SetHead(ctx, remoteHeadCommit.ID); err != nil {
+	if err := r.Provider.SetHead(ctx, remoteHeadCommit.ID); err != nil {
 		return err
 	}
-	if err := r.DB.SetSyncState(ctx, remoteName, &remoteHeadCommit.ID); err != nil {
+	if err := r.Provider.SetSyncState(ctx, remoteName, &remoteHeadCommit.ID); err != nil {
 		return err
 	}
 
@@ -773,14 +777,14 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 	for i, c := range localCommits {
 		localIDs[i] = c.ID
 	}
-	if err := r.DB.DeleteBlobsForCommits(ctx, localIDs); err != nil {
+	if err := r.Provider.DeleteBlobsForCommits(ctx, localIDs); err != nil {
 		return fmt.Errorf("failed to clean up blobs: %w", err)
 	}
-	if err := r.DB.DeleteCommits(ctx, localIDs); err != nil {
+	if err := r.Provider.DeleteCommits(ctx, localIDs); err != nil {
 		return fmt.Errorf("failed to delete local commits: %w", err)
 	}
 	if commonAncestor != "" {
-		if err := r.DB.SetHead(ctx, commonAncestor); err != nil {
+		if err := r.Provider.SetHead(ctx, commonAncestor); err != nil {
 			return err
 		}
 	}
@@ -794,7 +798,7 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 		end := min(i+batchSize, len(remoteCommits))
 		batch := remoteCommits[i:end]
 
-		if err := r.DB.CreateCommitsBatch(ctx, batch); err != nil {
+		if err := r.Provider.CreateCommitsBatch(ctx, batch); err != nil {
 			return fmt.Errorf("failed to create commits: %w", err)
 		}
 
@@ -804,7 +808,7 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 				return err
 			}
 			if len(blobs) > 0 {
-				if err := r.DB.CreateBlobs(ctx, blobs); err != nil {
+				if err := r.Provider.CreateBlobs(ctx, blobs); err != nil {
 					return fmt.Errorf("failed to create blobs for %s: %w", util.ShortID(commit.ID), err)
 				}
 			}
@@ -816,12 +820,12 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 
 	// Update HEAD to remote head
 	remoteHeadCommit := remoteCommits[len(remoteCommits)-1]
-	if err := r.DB.SetHead(ctx, remoteHeadCommit.ID); err != nil {
+	if err := r.Provider.SetHead(ctx, remoteHeadCommit.ID); err != nil {
 		return err
 	}
 
 	// Update sync state
-	if err := r.DB.SetSyncState(ctx, remoteName, &remoteHeadCommit.ID); err != nil {
+	if err := r.Provider.SetSyncState(ctx, remoteName, &remoteHeadCommit.ID); err != nil {
 		return err
 	}
 
@@ -834,14 +838,14 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 			fmt.Printf("  [%d/%d] Replaying: %s\n", i+1, len(localCommits), firstLine(oldCommit.Message))
 
 			// Get blobs from the old commit
-			oldBlobs, err := r.DB.GetBlobsAtCommit(ctx, oldCommit.ID)
+			oldBlobs, err := r.Provider.GetBlobsAtCommit(ctx, oldCommit.ID)
 			if err != nil {
 				return fmt.Errorf("failed to get blobs for replay: %w", err)
 			}
 
 			// Create new commit with new ID but same message/author
 			newCommitID := util.NewULID()
-			currentHeadID, _ := r.DB.GetHead(ctx)
+			currentHeadID, _ := r.Provider.GetHead(ctx)
 			var parentID *string
 			if currentHeadID != "" {
 				parentID = &currentHeadID
@@ -860,7 +864,7 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 				CommittedAt:    time.Now(), // New timestamp for replay
 			}
 
-			if err := r.DB.CreateCommit(ctx, newCommit); err != nil {
+			if err := r.Provider.CreateCommit(ctx, newCommit); err != nil {
 				return fmt.Errorf("failed to replay commit: %w", err)
 			}
 
@@ -879,13 +883,13 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 						SymlinkTarget: blob.SymlinkTarget,
 					}
 				}
-				if err := r.DB.CreateBlobs(ctx, replayedBlobs); err != nil {
+				if err := r.Provider.CreateBlobs(ctx, replayedBlobs); err != nil {
 					return fmt.Errorf("failed to replay blobs: %w", err)
 				}
 			}
 
 			// Update HEAD
-			if err := r.DB.SetHead(ctx, newCommitID); err != nil {
+			if err := r.Provider.SetHead(ctx, newCommitID); err != nil {
 				return err
 			}
 
@@ -898,9 +902,9 @@ func pullRebase(ctx context.Context, r *repo.Repository, remoteDB *db.DB, localH
 	// Update working directory
 	fmt.Println()
 	fmt.Println("Updating working directory...")
-	headID, _ := r.DB.GetHead(ctx)
+	headID, _ := r.Provider.GetHead(ctx)
 	if headID != "" {
-		tree, err := r.DB.GetTreeAtCommit(ctx, headID)
+		tree, err := r.Provider.GetTreeAtCommit(ctx, headID)
 		if err != nil {
 			return err
 		}
