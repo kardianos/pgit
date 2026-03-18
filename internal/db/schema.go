@@ -9,13 +9,17 @@ import (
 )
 
 // SchemaVersion is the current schema version.
+// Version 5 introduces:
+// - Code review tables: author, cl, patch_set, review_comment, review_vote, ci_result
+// - Enum types: author_kind, cl_status, ci_status
+// - Hierarchical author permissions with bitmask AND-walk
 // Version 4 introduces:
 // - N:1 path-to-group mapping (multiple paths can share one delta group)
 // - path_id as PK in pgit_paths and pgit_file_refs
 // - group_id remains for delta compression grouping in content tables
 // - compress_depth increased to 10 for better deduplication
 // - Removed reset and resolve commands (v4 is append-only)
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // InitSchema creates the pgit schema in the database
 func (db *DB) InitSchema(ctx context.Context) error {
@@ -32,12 +36,22 @@ func (db *DB) InitSchema(ctx context.Context) error {
 			return fmt.Errorf("failed to get schema version: %w", err)
 		}
 
-		if version < SchemaVersion {
+		if version < 4 {
 			return fmt.Errorf("schema version %d detected (current is %d).\n\n"+
 				"The database schema has changed. Please re-import your repository:\n"+
 				"  pgit import --force /path/to/git/repo\n\n"+
 				"This will recreate the database with the new optimized schema.",
 				version, SchemaVersion)
+		}
+
+		// Migrate from v4 to v5: add code review tables (additive only).
+		if version == 4 {
+			if err := db.createReviewTables(ctx); err != nil {
+				return fmt.Errorf("failed to migrate to v5: %w", err)
+			}
+			if err := db.SetSchemaVersion(ctx, SchemaVersion); err != nil {
+				return fmt.Errorf("failed to update schema version: %w", err)
+			}
 		}
 
 		// Schema is up to date, nothing to do
@@ -75,6 +89,9 @@ func (db *DB) InitSchema(ctx context.Context) error {
 		return err
 	}
 	if err := db.createCommitGraphTable(ctx); err != nil {
+		return err
+	}
+	if err := db.createReviewTables(ctx); err != nil {
 		return err
 	}
 
@@ -409,6 +426,7 @@ func (db *DB) DropAllIndexes(ctx context.Context) error {
 	g.Go(func() error { return db.DropCommitGraphIndexes(ctx) })
 	g.Go(func() error { return db.DropPathsIndexes(ctx) })
 	g.Go(func() error { return db.DropFileRefsIndexes(ctx) })
+	g.Go(func() error { return db.DropReviewIndexes(ctx) })
 	return g.Wait()
 }
 
@@ -423,6 +441,7 @@ func (db *DB) CreateAllIndexes(ctx context.Context) error {
 	g.Go(func() error { return db.CreateCommitGraphIndexes(ctx) })
 	g.Go(func() error { return db.CreatePathsIndexes(ctx) })
 	g.Go(func() error { return db.CreateFileRefsIndexes(ctx) })
+	g.Go(func() error { return db.CreateReviewIndexes(ctx) })
 	return g.Wait()
 }
 
@@ -447,6 +466,181 @@ func (db *DB) CreateBlobPhaseIndexes(ctx context.Context) error {
 	g.Go(func() error { return db.CreatePathsIndexes(ctx) })
 	g.Go(func() error { return db.CreateFileRefsIndexes(ctx) })
 	return g.Wait()
+}
+
+// DropReviewIndexes drops secondary indexes on review tables (v5).
+func (db *DB) DropReviewIndexes(ctx context.Context) error {
+	indexes := []string{
+		"idx_author_parent",
+		"idx_author_name",
+		"idx_cl_author",
+		"idx_cl_status",
+		"idx_cl_parent",
+		"idx_patch_set_cl",
+		"idx_review_comment_cl",
+		"idx_review_comment_author",
+		"idx_review_comment_parent",
+		"idx_ci_result_cl",
+	}
+	for _, idx := range indexes {
+		if err := db.Exec(ctx, fmt.Sprintf("DROP INDEX IF EXISTS %s", idx)); err != nil {
+			return fmt.Errorf("failed to drop %s: %w", idx, err)
+		}
+	}
+	return nil
+}
+
+// CreateReviewIndexes creates secondary indexes on review tables (v5).
+func (db *DB) CreateReviewIndexes(ctx context.Context) error {
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_author_parent ON author(parent_id)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_author_name ON author(name)",
+		"CREATE INDEX IF NOT EXISTS idx_cl_author ON cl(author_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cl_status ON cl(status)",
+		"CREATE INDEX IF NOT EXISTS idx_cl_parent ON cl(parent_cl_id)",
+		"CREATE INDEX IF NOT EXISTS idx_patch_set_cl ON patch_set(cl_id)",
+		"CREATE INDEX IF NOT EXISTS idx_review_comment_cl ON review_comment(cl_id)",
+		"CREATE INDEX IF NOT EXISTS idx_review_comment_author ON review_comment(author_id)",
+		"CREATE INDEX IF NOT EXISTS idx_review_comment_parent ON review_comment(parent_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ci_result_cl ON ci_result(cl_id)",
+	}
+	g, ctx := errgroup.WithContext(ctx)
+	for _, ddl := range indexes {
+		g.Go(func() error {
+			return db.Exec(ctx, ddl)
+		})
+	}
+	return g.Wait()
+}
+
+// createReviewTables creates the code review tables added in schema v5.
+// All statements use IF NOT EXISTS so this is safe to call on both fresh
+// installs and v4→v5 migrations.
+func (db *DB) createReviewTables(ctx context.Context) error {
+	// Create enum types
+	for _, ddl := range []string{
+		`DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'author_kind') THEN
+				CREATE TYPE author_kind AS ENUM ('human', 'llm', 'service');
+			END IF;
+		END $$`,
+		`DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'cl_status') THEN
+				CREATE TYPE cl_status AS ENUM ('draft', 'active', 'submitted', 'abandoned');
+			END IF;
+		END $$`,
+		`DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ci_status') THEN
+				CREATE TYPE ci_status AS ENUM ('pending', 'running', 'passed', 'failed');
+			END IF;
+		END $$`,
+	} {
+		if err := db.Exec(ctx, ddl); err != nil {
+			return fmt.Errorf("failed to create enum type: %w", err)
+		}
+	}
+
+	// author table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS author (
+			id          TEXT PRIMARY KEY,
+			parent_id   TEXT REFERENCES author(id),
+			name        TEXT NOT NULL,
+			email       TEXT,
+			kind        author_kind NOT NULL DEFAULT 'human',
+			permissions BIGINT NOT NULL DEFAULT 0,
+			token_hash  BYTEA,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted_at  TIMESTAMPTZ
+		)`); err != nil {
+		return fmt.Errorf("failed to create author table: %w", err)
+	}
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_author_parent ON author(parent_id)")
+	_ = db.Exec(ctx, "CREATE UNIQUE INDEX IF NOT EXISTS idx_author_name ON author(name)")
+
+	// cl table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS cl (
+			id           TEXT PRIMARY KEY,
+			author_id    TEXT NOT NULL REFERENCES author(id),
+			title        TEXT NOT NULL,
+			description  TEXT NOT NULL DEFAULT '',
+			status       cl_status NOT NULL DEFAULT 'draft',
+			parent_cl_id TEXT REFERENCES cl(id),
+			submitted_as TEXT,
+			created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("failed to create cl table: %w", err)
+	}
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_cl_author ON cl(author_id)")
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_cl_status ON cl(status)")
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_cl_parent ON cl(parent_cl_id)")
+
+	// patch_set table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS patch_set (
+			id          TEXT PRIMARY KEY,
+			cl_id       TEXT NOT NULL REFERENCES cl(id),
+			number      INTEGER NOT NULL,
+			commit_hash TEXT NOT NULL,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (cl_id, number)
+		)`); err != nil {
+		return fmt.Errorf("failed to create patch_set table: %w", err)
+	}
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_patch_set_cl ON patch_set(cl_id)")
+
+	// review_comment table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS review_comment (
+			id          TEXT PRIMARY KEY,
+			cl_id       TEXT NOT NULL REFERENCES cl(id),
+			patch_set   INTEGER,
+			path        TEXT,
+			line        INTEGER,
+			author_id   TEXT NOT NULL REFERENCES author(id),
+			body        TEXT NOT NULL,
+			parent_id   TEXT REFERENCES review_comment(id),
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("failed to create review_comment table: %w", err)
+	}
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_review_comment_cl ON review_comment(cl_id)")
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_review_comment_author ON review_comment(author_id)")
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_review_comment_parent ON review_comment(parent_id)")
+
+	// review_vote table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS review_vote (
+			cl_id      TEXT NOT NULL REFERENCES cl(id),
+			author_id  TEXT NOT NULL REFERENCES author(id),
+			score      INTEGER NOT NULL DEFAULT 0,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (cl_id, author_id)
+		)`); err != nil {
+		return fmt.Errorf("failed to create review_vote table: %w", err)
+	}
+
+	// ci_result table
+	if err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS ci_result (
+			id            TEXT PRIMARY KEY,
+			cl_id         TEXT NOT NULL REFERENCES cl(id),
+			patch_set     INTEGER NOT NULL,
+			job_name      TEXT NOT NULL,
+			status        ci_status NOT NULL DEFAULT 'pending',
+			log_blob_hash TEXT,
+			artifacts     JSONB,
+			triggered_by  TEXT NOT NULL REFERENCES author(id),
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("failed to create ci_result table: %w", err)
+	}
+	_ = db.Exec(ctx, "CREATE INDEX IF NOT EXISTS idx_ci_result_cl ON ci_result(cl_id)")
+
+	return nil
 }
 
 // SchemaExists checks if the pgit schema exists
@@ -498,6 +692,14 @@ func (db *DB) SetSchemaVersion(ctx context.Context, version int) error {
 // DropSchema drops all pgit tables (use with caution!)
 func (db *DB) DropSchema(ctx context.Context) error {
 	tables := []string{
+		// Review tables (v5) — drop first due to FK dependencies
+		"ci_result",
+		"review_vote",
+		"review_comment",
+		"patch_set",
+		"cl",
+		"author",
+		// Core pgit tables
 		"pgit_metadata",
 		"pgit_sync_state",
 		"pgit_refs",
@@ -516,6 +718,11 @@ func (db *DB) DropSchema(ctx context.Context) error {
 		if err := db.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)); err != nil {
 			return fmt.Errorf("failed to drop %s: %w", table, err)
 		}
+	}
+
+	// Drop enum types added in v5
+	for _, typ := range []string{"ci_status", "cl_status", "author_kind"} {
+		_ = db.Exec(ctx, fmt.Sprintf("DROP TYPE IF EXISTS %s CASCADE", typ))
 	}
 
 	return nil

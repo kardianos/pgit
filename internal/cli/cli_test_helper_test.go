@@ -80,6 +80,7 @@ func newTestRootCmd() *cobra.Command {
 
 	root.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose output")
 	root.PersistentFlags().Bool("no-color", false, "Disable colored output")
+	root.PersistentFlags().String("account", "", "Act as a sub-author (by name)")
 
 	root.AddCommand(
 		newVersionCmd(),
@@ -100,6 +101,8 @@ func newTestRootCmd() *cobra.Command {
 		newGrepCmd(),
 		newSQLCmd(),
 		newAnalyzeCmd(),
+		newAuthorCmd(),
+		newCLCmd(),
 	)
 
 	return root

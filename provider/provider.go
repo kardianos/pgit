@@ -27,6 +27,8 @@ type Provider interface {
 	SchemaManager
 	SearchProvider
 	SQLExecutor
+	AuthorManager
+	CLManager
 	Closer
 }
 
@@ -171,6 +173,8 @@ type SchemaManager interface {
 	CreatePathsIndexes(ctx context.Context) error
 	DropFileRefsIndexes(ctx context.Context) error
 	CreateFileRefsIndexes(ctx context.Context) error
+	DropReviewIndexes(ctx context.Context) error
+	CreateReviewIndexes(ctx context.Context) error
 }
 
 // SearchProvider provides content search capabilities.
@@ -187,6 +191,45 @@ type SQLExecutor interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error
 	Pool() *pgxpool.Pool
+}
+
+// AuthorManager provides CRUD operations for authors.
+type AuthorManager interface {
+	CreateAuthor(ctx context.Context, a *db.Author) error
+	GetAuthor(ctx context.Context, id string) (*db.Author, error)
+	GetAuthorByName(ctx context.Context, name string) (*db.Author, error)
+	ListAuthors(ctx context.Context, includeDeleted bool) ([]*db.Author, error)
+	GetAuthorChildren(ctx context.Context, parentID string) ([]*db.Author, error)
+	GetAuthorChain(ctx context.Context, id string) ([]*db.Author, error)
+	ComputeEffectivePermissions(ctx context.Context, id string) (db.Permission, error)
+	SoftDeleteAuthor(ctx context.Context, id string) error
+	UpdateAuthorPermissions(ctx context.Context, id string, perms db.Permission) error
+	CreateAuthorToken(ctx context.Context, authorID string) (string, error)
+	ValidateAuthorToken(ctx context.Context, token string) (*db.Author, error)
+}
+
+// CLManager provides CRUD operations for change lists, patch sets,
+// review comments, and review votes.
+type CLManager interface {
+	CreateCL(ctx context.Context, c *db.CL) error
+	GetCL(ctx context.Context, id string) (*db.CL, error)
+	ListCLs(ctx context.Context, status db.CLStatus, limit int) ([]*db.CL, error)
+	UpdateCLStatus(ctx context.Context, id string, status db.CLStatus) error
+	SubmitCL(ctx context.Context, id string, commitHash string) error
+	UpdateCL(ctx context.Context, c *db.CL) error
+
+	CreatePatchSet(ctx context.Context, ps *db.PatchSet) error
+	GetPatchSetsForCL(ctx context.Context, clID string) ([]*db.PatchSet, error)
+	GetLatestPatchSet(ctx context.Context, clID string) (*db.PatchSet, error)
+
+	CreateReviewComment(ctx context.Context, c *db.ReviewComment) error
+	GetCommentsForCL(ctx context.Context, clID string) ([]*db.ReviewComment, error)
+	GetCommentsForPatchSet(ctx context.Context, clID string, patchSetNum int) ([]*db.ReviewComment, error)
+
+	SetReviewVote(ctx context.Context, v *db.ReviewVote) error
+	GetVotesForCL(ctx context.Context, clID string) ([]*db.ReviewVote, error)
+
+	GetCLStack(ctx context.Context, clID string) ([]*db.CL, error)
 }
 
 // Closer releases resources held by the provider.

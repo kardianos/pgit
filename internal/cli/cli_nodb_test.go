@@ -98,6 +98,61 @@ func TestMissingArgumentErrors(t *testing.T) {
 			args:    []string{"rm"},
 			wantErr: true,
 		},
+		{
+			name:    "author create without name",
+			args:    []string{"author", "create"},
+			wantErr: true,
+		},
+		{
+			name:    "author show without id",
+			args:    []string{"author", "show"},
+			wantErr: true,
+		},
+		{
+			name:    "author delete without id",
+			args:    []string{"author", "delete"},
+			wantErr: true,
+		},
+		{
+			name:    "author token without id",
+			args:    []string{"author", "token"},
+			wantErr: true,
+		},
+		{
+			name:    "cl show without id",
+			args:    []string{"cl", "show"},
+			wantErr: true,
+		},
+		{
+			name:    "cl update without id",
+			args:    []string{"cl", "update"},
+			wantErr: true,
+		},
+		{
+			name:    "cl comment without id",
+			args:    []string{"cl", "comment"},
+			wantErr: true,
+		},
+		{
+			name:    "cl vote without args",
+			args:    []string{"cl", "vote"},
+			wantErr: true,
+		},
+		{
+			name:    "cl submit without id",
+			args:    []string{"cl", "submit"},
+			wantErr: true,
+		},
+		{
+			name:    "cl abandon without id",
+			args:    []string{"cl", "abandon"},
+			wantErr: true,
+		},
+		{
+			name:    "cl stack without id",
+			args:    []string{"cl", "stack"},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -312,6 +367,24 @@ func TestHelpOutput(t *testing.T) {
 			name:     "sql examples no-db",
 			args:     []string{"sql", "examples"},
 			contains: []string{"SELECT", "pgit_commits"},
+			wantErr:  false,
+		},
+		{
+			name:     "author help shows subcommands",
+			args:     []string{"author", "--help"},
+			contains: []string{"create", "list", "show", "delete", "token"},
+			wantErr:  false,
+		},
+		{
+			name:     "cl help shows subcommands",
+			args:     []string{"cl", "--help"},
+			contains: []string{"new", "update", "list", "show", "comment", "vote", "submit", "abandon", "stack"},
+			wantErr:  false,
+		},
+		{
+			name:     "root help shows author and cl",
+			args:     []string{"--help"},
+			contains: []string{"author", "cl"},
 			wantErr:  false,
 		},
 	}

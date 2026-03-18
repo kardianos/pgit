@@ -23,6 +23,13 @@ func TestInitSchemaCreatesAllTables(t *testing.T) {
 		"pgit_refs",
 		"pgit_sync_state",
 		"pgit_commit_graph",
+		// Review tables (v5)
+		"author",
+		"cl",
+		"patch_set",
+		"review_comment",
+		"review_vote",
+		"ci_result",
 	}
 
 	for _, table := range expectedTables {
@@ -136,7 +143,8 @@ func TestDropSchemaRemovesEverything(t *testing.T) {
 			// Verify specific tables are gone
 			tables := []string{"pgit_commits", "pgit_paths", "pgit_file_refs",
 				"pgit_text_content", "pgit_binary_content", "pgit_refs", "pgit_metadata",
-				"pgit_sync_state", "pgit_commit_graph"}
+				"pgit_sync_state", "pgit_commit_graph",
+				"author", "cl", "patch_set", "review_comment", "review_vote", "ci_result"}
 			for _, table := range tables {
 				var found bool
 				err := d.QueryRow(ctx,

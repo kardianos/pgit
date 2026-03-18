@@ -435,6 +435,14 @@ func (p *Provider) CreateFileRefsIndexes(ctx context.Context) error {
 	return p.db.CreateFileRefsIndexes(ctx)
 }
 
+func (p *Provider) DropReviewIndexes(ctx context.Context) error {
+	return p.db.DropReviewIndexes(ctx)
+}
+
+func (p *Provider) CreateReviewIndexes(ctx context.Context) error {
+	return p.db.CreateReviewIndexes(ctx)
+}
+
 // ---------------------------------------------------------------------------
 // SearchProvider
 // ---------------------------------------------------------------------------
@@ -469,6 +477,118 @@ func (p *Provider) WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
 
 func (p *Provider) Pool() *pgxpool.Pool {
 	return p.db.Pool()
+}
+
+// ---------------------------------------------------------------------------
+// AuthorManager
+// ---------------------------------------------------------------------------
+
+func (p *Provider) CreateAuthor(ctx context.Context, a *db.Author) error {
+	return p.db.CreateAuthor(ctx, a)
+}
+
+func (p *Provider) GetAuthor(ctx context.Context, id string) (*db.Author, error) {
+	return p.db.GetAuthor(ctx, id)
+}
+
+func (p *Provider) GetAuthorByName(ctx context.Context, name string) (*db.Author, error) {
+	return p.db.GetAuthorByName(ctx, name)
+}
+
+func (p *Provider) ListAuthors(ctx context.Context, includeDeleted bool) ([]*db.Author, error) {
+	return p.db.ListAuthors(ctx, includeDeleted)
+}
+
+func (p *Provider) GetAuthorChildren(ctx context.Context, parentID string) ([]*db.Author, error) {
+	return p.db.GetAuthorChildren(ctx, parentID)
+}
+
+func (p *Provider) GetAuthorChain(ctx context.Context, id string) ([]*db.Author, error) {
+	return p.db.GetAuthorChain(ctx, id)
+}
+
+func (p *Provider) ComputeEffectivePermissions(ctx context.Context, id string) (db.Permission, error) {
+	return p.db.ComputeEffectivePermissions(ctx, id)
+}
+
+func (p *Provider) SoftDeleteAuthor(ctx context.Context, id string) error {
+	return p.db.SoftDeleteAuthor(ctx, id)
+}
+
+func (p *Provider) UpdateAuthorPermissions(ctx context.Context, id string, perms db.Permission) error {
+	return p.db.UpdateAuthorPermissions(ctx, id, perms)
+}
+
+func (p *Provider) CreateAuthorToken(ctx context.Context, authorID string) (string, error) {
+	return p.db.CreateAuthorToken(ctx, authorID)
+}
+
+func (p *Provider) ValidateAuthorToken(ctx context.Context, token string) (*db.Author, error) {
+	return p.db.ValidateAuthorToken(ctx, token)
+}
+
+// ---------------------------------------------------------------------------
+// CLManager
+// ---------------------------------------------------------------------------
+
+func (p *Provider) CreateCL(ctx context.Context, c *db.CL) error {
+	return p.db.CreateCL(ctx, c)
+}
+
+func (p *Provider) GetCL(ctx context.Context, id string) (*db.CL, error) {
+	return p.db.GetCL(ctx, id)
+}
+
+func (p *Provider) ListCLs(ctx context.Context, status db.CLStatus, limit int) ([]*db.CL, error) {
+	return p.db.ListCLs(ctx, status, limit)
+}
+
+func (p *Provider) UpdateCLStatus(ctx context.Context, id string, status db.CLStatus) error {
+	return p.db.UpdateCLStatus(ctx, id, status)
+}
+
+func (p *Provider) SubmitCL(ctx context.Context, id string, commitHash string) error {
+	return p.db.SubmitCL(ctx, id, commitHash)
+}
+
+func (p *Provider) UpdateCL(ctx context.Context, c *db.CL) error {
+	return p.db.UpdateCL(ctx, c)
+}
+
+func (p *Provider) CreatePatchSet(ctx context.Context, ps *db.PatchSet) error {
+	return p.db.CreatePatchSet(ctx, ps)
+}
+
+func (p *Provider) GetPatchSetsForCL(ctx context.Context, clID string) ([]*db.PatchSet, error) {
+	return p.db.GetPatchSetsForCL(ctx, clID)
+}
+
+func (p *Provider) GetLatestPatchSet(ctx context.Context, clID string) (*db.PatchSet, error) {
+	return p.db.GetLatestPatchSet(ctx, clID)
+}
+
+func (p *Provider) CreateReviewComment(ctx context.Context, c *db.ReviewComment) error {
+	return p.db.CreateReviewComment(ctx, c)
+}
+
+func (p *Provider) GetCommentsForCL(ctx context.Context, clID string) ([]*db.ReviewComment, error) {
+	return p.db.GetCommentsForCL(ctx, clID)
+}
+
+func (p *Provider) GetCommentsForPatchSet(ctx context.Context, clID string, patchSetNum int) ([]*db.ReviewComment, error) {
+	return p.db.GetCommentsForPatchSet(ctx, clID, patchSetNum)
+}
+
+func (p *Provider) SetReviewVote(ctx context.Context, v *db.ReviewVote) error {
+	return p.db.SetReviewVote(ctx, v)
+}
+
+func (p *Provider) GetVotesForCL(ctx context.Context, clID string) ([]*db.ReviewVote, error) {
+	return p.db.GetVotesForCL(ctx, clID)
+}
+
+func (p *Provider) GetCLStack(ctx context.Context, clID string) ([]*db.CL, error) {
+	return p.db.GetCLStack(ctx, clID)
 }
 
 // ---------------------------------------------------------------------------
