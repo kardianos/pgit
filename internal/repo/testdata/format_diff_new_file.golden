@@ -1,0 +1,8 @@
+diff --pgit a/hello.txt b/hello.txt
+new file
+--- a/hello.txt
++++ b/hello.txt
+@@ -1,0 +1,3 @@
++line one
++line two
++line three

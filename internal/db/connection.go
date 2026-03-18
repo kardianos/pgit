@@ -83,8 +83,11 @@ func ConnectLite(ctx context.Context, url string) (*DB, error) {
 		return nil, fmt.Errorf("invalid connection URL: %w", err)
 	}
 
-	// Minimal pool - just 1 connection for quick operations
-	config.MaxConns = 1
+	// Minimal pool with no background connection creation.
+	// MaxConns=4 allows transactions + concurrent queries without
+	// pool exhaustion. MinConns=0 avoids background goroutines that
+	// can deadlock with AfterConnect during pool shutdown.
+	config.MaxConns = 4
 	config.MinConns = 0
 	config.MaxConnLifetime = time.Minute
 	config.MaxConnIdleTime = 10 * time.Second

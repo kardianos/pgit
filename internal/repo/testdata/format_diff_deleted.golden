@@ -1,0 +1,7 @@
+diff --pgit a/gone.txt b/gone.txt
+deleted file
+--- a/gone.txt
++++ b/gone.txt
+@@ -1,2 +1,0 @@
+-goodbye
+-world

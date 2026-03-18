@@ -1,0 +1,11 @@
+top1
+top2
+top3
+<<<<<<< LOCAL
+LOCAL MIDDLE
+=======
+REMOTE MIDDLE
+>>>>>>> REMOTE (origin)
+bot1
+bot2
+bot3

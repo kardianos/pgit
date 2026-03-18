@@ -117,6 +117,19 @@ func (r *Repository) Connect(ctx context.Context) error {
 		return nil // Already connected
 	}
 
+	// If a direct database URL is configured, use it instead of
+	// container discovery. Used by tests and direct-to-PG deployments.
+	// Uses ConnectLite (MinConns=0, MaxConns=1) to avoid background
+	// pool goroutines that deadlock on AfterConnect during shutdown.
+	if r.Config.Core.DatabaseURL != "" {
+		conn, err := db.ConnectLite(ctx, r.Config.Core.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		r.DB = conn
+		return nil
+	}
+
 	// Ensure container is running
 	if !container.IsContainerRunning(r.Runtime) {
 		if err := r.StartContainer(); err != nil {

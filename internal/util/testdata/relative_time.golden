@@ -1,0 +1,13 @@
+just now (0s)             => just now
+30 seconds ago            => just now
+1 minute ago              => 1 minute ago
+45 minutes ago            => 45 minutes ago
+1 hour ago                => 1 hour ago
+5 hours ago               => 5 hours ago
+23 hours ago              => 23 hours ago
+1 day ago                 => 1 day ago
+3 days ago                => 3 days ago
+6 days ago                => 6 days ago
+1 week ago                => 1 week ago
+3 weeks ago               => 3 weeks ago
+old date                  => Jun 15, 2020

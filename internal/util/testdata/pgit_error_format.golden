@@ -1,0 +1,39 @@
+=== title only ===
+Error: simple error
+
+=== with message and context ===
+Error: not a repo
+
+  No .pgit directory found
+
+  while running pgit log
+
+=== with causes ===
+Error: connection failed
+
+  Possible causes:
+    • server down
+    • bad credentials
+
+=== with suggestions ===
+Error: container not running
+
+  Try:
+    $ pgit local start
+    $ pgit doctor
+
+=== full error with everything ===
+Error: database error
+
+  Cannot connect to PostgreSQL
+
+  postgres://localhost:5433/mydb
+
+  Possible causes:
+    • server is not running
+    • wrong port
+
+  Try:
+    $ pgit local start
+    $ pgit local status
+

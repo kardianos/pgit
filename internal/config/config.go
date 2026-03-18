@@ -17,7 +17,8 @@ type Config struct {
 
 // CoreConfig contains core repository settings
 type CoreConfig struct {
-	LocalDB string `toml:"local_db" config:"core.local_db" desc:"Local database name" readonly:"true"`
+	LocalDB     string `toml:"local_db" config:"core.local_db" desc:"Local database name" readonly:"true"`
+	DatabaseURL string `toml:"database_url,omitempty" config:"core.database_url" desc:"Direct database connection URL (bypasses container discovery)"`
 }
 
 // UserConfig contains user information for commits
