@@ -5,12 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"strings"
+
 	"github.com/imgajeed76/pgit/v4/internal/config"
 	"github.com/imgajeed76/pgit/v4/internal/container"
 	"github.com/imgajeed76/pgit/v4/internal/db"
 	"github.com/imgajeed76/pgit/v4/internal/util"
 	"github.com/imgajeed76/pgit/v4/provider"
 	"github.com/imgajeed76/pgit/v4/provider/direct"
+	"github.com/imgajeed76/pgit/v4/provider/remote"
 )
 
 // Repository represents a pgit repository
@@ -130,11 +133,22 @@ func (r *Repository) Connect(ctx context.Context) error {
 		}
 	}
 
+	// If a server URL is configured, use the remote provider.
+	if r.Config.Core.ServerURL != "" {
+		r.Provider = remote.New(r.Config.Core.ServerURL, r.Config.Core.ServerToken)
+		return nil
+	}
+
 	// If a direct database URL is configured, use it instead of
 	// container discovery. Used by tests and direct-to-PG deployments.
 	// Uses ConnectLite (MinConns=0, MaxConns=1) to avoid background
 	// pool goroutines that deadlock on AfterConnect during shutdown.
 	if r.Config.Core.DatabaseURL != "" {
+		// If the URL starts with http:// or https://, treat it as a remote server.
+		if strings.HasPrefix(r.Config.Core.DatabaseURL, "http://") || strings.HasPrefix(r.Config.Core.DatabaseURL, "https://") {
+			r.Provider = remote.New(r.Config.Core.DatabaseURL, r.Config.Core.ServerToken)
+			return nil
+		}
 		conn, err := db.ConnectLite(ctx, r.Config.Core.DatabaseURL)
 		if err != nil {
 			return err

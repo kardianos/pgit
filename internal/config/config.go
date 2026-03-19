@@ -19,6 +19,8 @@ type Config struct {
 type CoreConfig struct {
 	LocalDB     string `toml:"local_db" config:"core.local_db" desc:"Local database name" readonly:"true"`
 	DatabaseURL string `toml:"database_url,omitempty" config:"core.database_url" desc:"Direct database connection URL (bypasses container discovery)"`
+	ServerURL   string `toml:"server_url,omitempty" config:"core.server_url" desc:"pgit server URL for remote access (e.g. http://localhost:8080)"`
+	ServerToken string `toml:"server_token,omitempty" config:"core.server_token" desc:"Authentication token for the pgit server"`
 }
 
 // UserConfig contains user information for commits
