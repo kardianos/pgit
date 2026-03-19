@@ -86,3 +86,50 @@ func (db *DB) RefExists(ctx context.Context, name string) (bool, error) {
 	err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pgit_refs WHERE name = $1)", name).Scan(&exists)
 	return exists, err
 }
+
+// ---------------------------------------------------------------------------
+// User ref namespaces (refs/users/<email>/<name>)
+// ---------------------------------------------------------------------------
+
+// userRefName builds the namespaced ref name for a user ref.
+func userRefName(email, name string) string {
+	return "refs/users/" + email + "/" + name
+}
+
+// SetUserRef creates or updates a per-user ref.
+func (db *DB) SetUserRef(ctx context.Context, email, name, commitID string) error {
+	return db.SetRef(ctx, userRefName(email, name), commitID)
+}
+
+// GetUserRef retrieves a per-user ref by email and name.
+func (db *DB) GetUserRef(ctx context.Context, email, name string) (*Ref, error) {
+	return db.GetRef(ctx, userRefName(email, name))
+}
+
+// GetUserRefs retrieves all refs for a given user email.
+func (db *DB) GetUserRefs(ctx context.Context, email string) ([]*Ref, error) {
+	prefix := "refs/users/" + email + "/"
+	sql := `SELECT name, commit_id FROM pgit_refs WHERE name LIKE $1 ORDER BY name`
+
+	rows, err := db.Query(ctx, sql, prefix+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*Ref
+	for rows.Next() {
+		r := &Ref{}
+		if err := rows.Scan(&r.Name, &r.CommitID); err != nil {
+			return nil, err
+		}
+		refs = append(refs, r)
+	}
+
+	return refs, rows.Err()
+}
+
+// DeleteUserRef deletes a per-user ref.
+func (db *DB) DeleteUserRef(ctx context.Context, email, name string) error {
+	return db.DeleteRef(ctx, userRefName(email, name))
+}

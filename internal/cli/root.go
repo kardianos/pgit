@@ -99,7 +99,11 @@ func init() {
 		newUpdateCmd(),
 		newAuthorCmd(),
 		newCLCmd(),
+		newRefCmd(),
+		newCICmd(),
 		newServerCmd(),
+		newMountCmd(),
+		newUnmountCmd(),
 	)
 }
 

@@ -153,6 +153,31 @@ func TestMissingArgumentErrors(t *testing.T) {
 			args:    []string{"cl", "stack"},
 			wantErr: true,
 		},
+		{
+			name:    "ref set without args",
+			args:    []string{"ref", "set"},
+			wantErr: true,
+		},
+		{
+			name:    "ref delete without name",
+			args:    []string{"ref", "delete"},
+			wantErr: true,
+		},
+		{
+			name:    "ci status without cl-id",
+			args:    []string{"ci", "status"},
+			wantErr: true,
+		},
+		{
+			name:    "ci trigger without cl-id",
+			args:    []string{"ci", "trigger"},
+			wantErr: true,
+		},
+		{
+			name:    "ci update without result-id",
+			args:    []string{"ci", "update"},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -384,7 +409,19 @@ func TestHelpOutput(t *testing.T) {
 		{
 			name:     "root help shows author and cl",
 			args:     []string{"--help"},
-			contains: []string{"author", "cl"},
+			contains: []string{"author", "cl", "ref", "ci"},
+			wantErr:  false,
+		},
+		{
+			name:     "ref help shows subcommands",
+			args:     []string{"ref", "--help"},
+			contains: []string{"list", "set", "delete"},
+			wantErr:  false,
+		},
+		{
+			name:     "ci help shows subcommands",
+			args:     []string{"ci", "--help"},
+			contains: []string{"status", "trigger", "update"},
 			wantErr:  false,
 		},
 	}

@@ -251,6 +251,22 @@ func (p *Provider) RefExists(ctx context.Context, name string) (bool, error) {
 	return p.db.RefExists(ctx, name)
 }
 
+func (p *Provider) SetUserRef(ctx context.Context, email, name, commitID string) error {
+	return p.db.SetUserRef(ctx, email, name, commitID)
+}
+
+func (p *Provider) GetUserRef(ctx context.Context, email, name string) (*db.Ref, error) {
+	return p.db.GetUserRef(ctx, email, name)
+}
+
+func (p *Provider) GetUserRefs(ctx context.Context, email string) ([]*db.Ref, error) {
+	return p.db.GetUserRefs(ctx, email)
+}
+
+func (p *Provider) DeleteUserRef(ctx context.Context, email, name string) error {
+	return p.db.DeleteUserRef(ctx, email, name)
+}
+
 // ---------------------------------------------------------------------------
 // MetadataManager
 // ---------------------------------------------------------------------------
@@ -589,6 +605,26 @@ func (p *Provider) GetVotesForCL(ctx context.Context, clID string) ([]*db.Review
 
 func (p *Provider) GetCLStack(ctx context.Context, clID string) ([]*db.CL, error) {
 	return p.db.GetCLStack(ctx, clID)
+}
+
+func (p *Provider) CreateCIResult(ctx context.Context, r *db.CIResult) error {
+	return p.db.CreateCIResult(ctx, r)
+}
+
+func (p *Provider) GetCIResultsForCL(ctx context.Context, clID string) ([]*db.CIResult, error) {
+	return p.db.GetCIResultsForCL(ctx, clID)
+}
+
+func (p *Provider) GetCIResultsForPatchSet(ctx context.Context, clID string, patchSet int) ([]*db.CIResult, error) {
+	return p.db.GetCIResultsForPatchSet(ctx, clID, patchSet)
+}
+
+func (p *Provider) UpdateCIResult(ctx context.Context, r *db.CIResult) error {
+	return p.db.UpdateCIResult(ctx, r)
+}
+
+func (p *Provider) GetCIResult(ctx context.Context, id string) (*db.CIResult, error) {
+	return p.db.GetCIResult(ctx, id)
 }
 
 // ---------------------------------------------------------------------------

@@ -850,6 +850,63 @@ func (p *Provider) GetCLStack(ctx context.Context, clID string) ([]*db.CL, error
 	return nil, ErrNotSupported
 }
 
+func (p *Provider) CreateCIResult(ctx context.Context, r *db.CIResult) error {
+	var result db.CIResult
+	return p.post(ctx, "/api/v1/cls/"+r.CLID+"/ci", r, &result)
+}
+
+func (p *Provider) GetCIResultsForCL(ctx context.Context, clID string) ([]*db.CIResult, error) {
+	var results []*db.CIResult
+	if err := p.get(ctx, "/api/v1/cls/"+clID+"/ci", &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (p *Provider) GetCIResultsForPatchSet(ctx context.Context, clID string, patchSet int) ([]*db.CIResult, error) {
+	var results []*db.CIResult
+	path := fmt.Sprintf("/api/v1/cls/%s/ci?patchset=%d", clID, patchSet)
+	if err := p.get(ctx, path, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (p *Provider) UpdateCIResult(ctx context.Context, r *db.CIResult) error {
+	var result db.CIResult
+	return p.put(ctx, "/api/v1/ci/"+r.ID, r, &result)
+}
+
+func (p *Provider) GetCIResult(ctx context.Context, id string) (*db.CIResult, error) {
+	return nil, ErrNotSupported
+}
+
+// ---------------------------------------------------------------------------
+// User Refs
+// ---------------------------------------------------------------------------
+
+func (p *Provider) SetUserRef(ctx context.Context, email, name, commitID string) error {
+	body := map[string]string{"commit_id": commitID}
+	var result map[string]string
+	return p.put(ctx, "/api/v1/refs/user/"+email+"/"+name, body, &result)
+}
+
+func (p *Provider) GetUserRef(ctx context.Context, email, name string) (*db.Ref, error) {
+	return nil, ErrNotSupported
+}
+
+func (p *Provider) GetUserRefs(ctx context.Context, email string) ([]*db.Ref, error) {
+	var refs []*db.Ref
+	if err := p.get(ctx, "/api/v1/refs/user/"+email, &refs); err != nil {
+		return nil, err
+	}
+	return refs, nil
+}
+
+func (p *Provider) DeleteUserRef(ctx context.Context, email, name string) error {
+	return ErrNotSupported
+}
+
 // ---------------------------------------------------------------------------
 // Closer
 // ---------------------------------------------------------------------------

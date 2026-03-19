@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -369,6 +370,200 @@ func TestReviewVoteUpsert(t *testing.T) {
 	}
 	if votes[0].Score != 2 {
 		t.Errorf("Score = %d, want 2", votes[0].Score)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CI Results
+// ---------------------------------------------------------------------------
+
+func makeCIResult(clID, authorID, jobName string, patchSet int) *db.CIResult {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	return &db.CIResult{
+		ID:          util.NewULID(),
+		CLID:        clID,
+		PatchSet:    patchSet,
+		JobName:     jobName,
+		Status:      db.CIStatusPending,
+		TriggeredBy: authorID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
+func TestCreateGetCIResultRoundTrip(t *testing.T) {
+	d := testdb.Acquire(t)
+	ctx := context.Background()
+	author := setupCLTestAuthor(t, d, "ci-author")
+
+	cl := makeCL(author.ID, "CI test", nil)
+	if err := d.CreateCL(ctx, cl); err != nil {
+		t.Fatalf("CreateCL: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		jobName string
+	}{
+		{"lint_job", "lint"},
+		{"test_job", "test"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ci := makeCIResult(cl.ID, author.ID, tt.jobName, 1)
+			if err := d.CreateCIResult(ctx, ci); err != nil {
+				t.Fatalf("CreateCIResult: %v", err)
+			}
+
+			results, err := d.GetCIResultsForCL(ctx, cl.ID)
+			if err != nil {
+				t.Fatalf("GetCIResultsForCL: %v", err)
+			}
+
+			found := false
+			for _, r := range results {
+				if r.ID == ci.ID {
+					found = true
+					if r.JobName != tt.jobName {
+						t.Errorf("JobName = %q, want %q", r.JobName, tt.jobName)
+					}
+					if r.Status != db.CIStatusPending {
+						t.Errorf("Status = %q, want %q", r.Status, db.CIStatusPending)
+					}
+				}
+			}
+			if !found {
+				t.Error("created CI result not found in GetCIResultsForCL")
+			}
+		})
+	}
+}
+
+func TestMultipleCIResultsPerPatchSet(t *testing.T) {
+	d := testdb.Acquire(t)
+	ctx := context.Background()
+	author := setupCLTestAuthor(t, d, "ci-multi-author")
+
+	cl := makeCL(author.ID, "CI multi test", nil)
+	if err := d.CreateCL(ctx, cl); err != nil {
+		t.Fatalf("CreateCL: %v", err)
+	}
+
+	jobs := []string{"lint", "test", "build"}
+	for _, job := range jobs {
+		ci := makeCIResult(cl.ID, author.ID, job, 1)
+		if err := d.CreateCIResult(ctx, ci); err != nil {
+			t.Fatalf("CreateCIResult %s: %v", job, err)
+		}
+		time.Sleep(time.Millisecond) // ensure distinct created_at
+	}
+
+	tests := []struct {
+		name     string
+		patchSet int
+		wantLen  int
+	}{
+		{"ps1_has_three", 1, 3},
+		{"ps2_has_none", 2, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, err := d.GetCIResultsForPatchSet(ctx, cl.ID, tt.patchSet)
+			if err != nil {
+				t.Fatalf("GetCIResultsForPatchSet: %v", err)
+			}
+			if len(results) != tt.wantLen {
+				t.Errorf("got %d results, want %d", len(results), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestUpdateCIResultStatus(t *testing.T) {
+	d := testdb.Acquire(t)
+	ctx := context.Background()
+	author := setupCLTestAuthor(t, d, "ci-update-author")
+
+	cl := makeCL(author.ID, "CI update test", nil)
+	if err := d.CreateCL(ctx, cl); err != nil {
+		t.Fatalf("CreateCL: %v", err)
+	}
+
+	ci := makeCIResult(cl.ID, author.ID, "build", 1)
+	if err := d.CreateCIResult(ctx, ci); err != nil {
+		t.Fatalf("CreateCIResult: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		status db.CIStatus
+	}{
+		{"to_running", db.CIStatusRunning},
+		{"to_passed", db.CIStatusPassed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ci.Status = tt.status
+			if err := d.UpdateCIResult(ctx, ci); err != nil {
+				t.Fatalf("UpdateCIResult: %v", err)
+			}
+
+			got, err := d.GetCIResult(ctx, ci.ID)
+			if err != nil {
+				t.Fatalf("GetCIResult: %v", err)
+			}
+			if got.Status != tt.status {
+				t.Errorf("Status = %q, want %q", got.Status, tt.status)
+			}
+		})
+	}
+}
+
+func TestGetCIResultsForPatchSetFiltering(t *testing.T) {
+	d := testdb.Acquire(t)
+	ctx := context.Background()
+	author := setupCLTestAuthor(t, d, "ci-filter-author")
+
+	cl := makeCL(author.ID, "CI filter test", nil)
+	if err := d.CreateCL(ctx, cl); err != nil {
+		t.Fatalf("CreateCL: %v", err)
+	}
+
+	// Create results across different patch sets
+	for ps := 1; ps <= 3; ps++ {
+		for j := 0; j < ps; j++ {
+			ci := makeCIResult(cl.ID, author.ID, fmt.Sprintf("job-%d-%d", ps, j), ps)
+			if err := d.CreateCIResult(ctx, ci); err != nil {
+				t.Fatalf("CreateCIResult ps%d job%d: %v", ps, j, err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	tests := []struct {
+		name     string
+		patchSet int
+		wantLen  int
+	}{
+		{"ps1_one_result", 1, 1},
+		{"ps2_two_results", 2, 2},
+		{"ps3_three_results", 3, 3},
+		{"ps4_none", 4, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, err := d.GetCIResultsForPatchSet(ctx, cl.ID, tt.patchSet)
+			if err != nil {
+				t.Fatalf("GetCIResultsForPatchSet: %v", err)
+			}
+			if len(results) != tt.wantLen {
+				t.Errorf("got %d results, want %d", len(results), tt.wantLen)
+			}
+		})
 	}
 }
 

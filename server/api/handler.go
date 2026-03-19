@@ -69,6 +69,16 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET /api/v1/cls/{id}/votes", h.GetVotesForCL)
 	h.mux.HandleFunc("POST /api/v1/cls/{id}/submit", h.SubmitCL)
 
+	// User refs
+	h.mux.HandleFunc("GET /api/v1/refs/user/{email}", h.GetUserRefs)
+	h.mux.HandleFunc("PUT /api/v1/refs/user/{email}/{name}", h.SetUserRef)
+	h.mux.HandleFunc("DELETE /api/v1/refs/user/{email}/{name}", h.DeleteUserRef)
+
+	// CI results
+	h.mux.HandleFunc("POST /api/v1/cls/{id}/ci", h.CreateCIResult)
+	h.mux.HandleFunc("GET /api/v1/cls/{id}/ci", h.GetCIResultsForCL)
+	h.mux.HandleFunc("PUT /api/v1/ci/{id}", h.UpdateCIResult)
+
 	// Stats / Schema
 	h.mux.HandleFunc("GET /api/v1/stats", h.GetRepoStats)
 	h.mux.HandleFunc("GET /api/v1/schema/version", h.GetSchemaVersion)
@@ -614,4 +624,122 @@ func (h *Handler) GetSchemaVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"version": v})
+}
+
+// ---------------------------------------------------------------------------
+// User Refs
+// ---------------------------------------------------------------------------
+
+func (h *Handler) GetUserRefs(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+	refs, err := h.db.GetUserRefs(r.Context(), email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, refs)
+}
+
+func (h *Handler) SetUserRef(w http.ResponseWriter, r *http.Request) {
+	if h.requirePerm(w, r, db.PermCLUpdate) == nil {
+		return
+	}
+	email := r.PathValue("email")
+	name := r.PathValue("name")
+	var body struct {
+		CommitID string `json:"commit_id"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if body.CommitID == "" {
+		writeError(w, http.StatusBadRequest, "commit_id required")
+		return
+	}
+	if err := h.db.SetUserRef(r.Context(), email, name, body.CommitID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"name":      fmt.Sprintf("refs/users/%s/%s", email, name),
+		"commit_id": body.CommitID,
+	})
+}
+
+func (h *Handler) DeleteUserRef(w http.ResponseWriter, r *http.Request) {
+	if h.requirePerm(w, r, db.PermCLUpdate) == nil {
+		return
+	}
+	email := r.PathValue("email")
+	name := r.PathValue("name")
+	if err := h.db.DeleteUserRef(r.Context(), email, name); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// ---------------------------------------------------------------------------
+// CI Results
+// ---------------------------------------------------------------------------
+
+func (h *Handler) CreateCIResult(w http.ResponseWriter, r *http.Request) {
+	if h.requirePerm(w, r, db.PermCITrigger) == nil {
+		return
+	}
+	clID := r.PathValue("id")
+	var ci db.CIResult
+	if !readJSON(w, r, &ci) {
+		return
+	}
+	ci.CLID = clID
+	if err := h.db.CreateCIResult(r.Context(), &ci); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create CI result")
+		return
+	}
+	writeJSON(w, http.StatusCreated, &ci)
+}
+
+func (h *Handler) GetCIResultsForCL(w http.ResponseWriter, r *http.Request) {
+	clID := r.PathValue("id")
+
+	patchSetStr := r.URL.Query().Get("patchset")
+	if patchSetStr != "" {
+		patchSet, pErr := strconv.Atoi(patchSetStr)
+		if pErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid patchset number")
+			return
+		}
+		results, err := h.db.GetCIResultsForPatchSet(r.Context(), clID, patchSet)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, results)
+		return
+	}
+
+	results, err := h.db.GetCIResultsForCL(r.Context(), clID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+func (h *Handler) UpdateCIResult(w http.ResponseWriter, r *http.Request) {
+	if h.requirePerm(w, r, db.PermCITrigger) == nil {
+		return
+	}
+	id := r.PathValue("id")
+	var ci db.CIResult
+	if !readJSON(w, r, &ci) {
+		return
+	}
+	ci.ID = id
+	if err := h.db.UpdateCIResult(r.Context(), &ci); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update CI result")
+		return
+	}
+	writeJSON(w, http.StatusOK, &ci)
 }

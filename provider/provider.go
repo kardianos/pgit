@@ -107,6 +107,12 @@ type RefManager interface {
 	GetHead(ctx context.Context) (string, error)
 	SetHead(ctx context.Context, commitID string) error
 	RefExists(ctx context.Context, name string) (bool, error)
+
+	// User ref namespaces
+	SetUserRef(ctx context.Context, email, name, commitID string) error
+	GetUserRef(ctx context.Context, email, name string) (*db.Ref, error)
+	GetUserRefs(ctx context.Context, email string) ([]*db.Ref, error)
+	DeleteUserRef(ctx context.Context, email, name string) error
 }
 
 // MetadataManager provides read/write access to repository metadata.
@@ -230,6 +236,13 @@ type CLManager interface {
 	GetVotesForCL(ctx context.Context, clID string) ([]*db.ReviewVote, error)
 
 	GetCLStack(ctx context.Context, clID string) ([]*db.CL, error)
+
+	// CI results
+	CreateCIResult(ctx context.Context, r *db.CIResult) error
+	GetCIResultsForCL(ctx context.Context, clID string) ([]*db.CIResult, error)
+	GetCIResultsForPatchSet(ctx context.Context, clID string, patchSet int) ([]*db.CIResult, error)
+	UpdateCIResult(ctx context.Context, r *db.CIResult) error
+	GetCIResult(ctx context.Context, id string) (*db.CIResult, error)
 }
 
 // Closer releases resources held by the provider.

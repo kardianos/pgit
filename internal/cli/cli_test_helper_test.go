@@ -103,6 +103,10 @@ func newTestRootCmd() *cobra.Command {
 		newAnalyzeCmd(),
 		newAuthorCmd(),
 		newCLCmd(),
+		newRefCmd(),
+		newCICmd(),
+		newMountCmd(),
+		newUnmountCmd(),
 	)
 
 	return root

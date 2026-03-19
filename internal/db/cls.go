@@ -246,6 +246,91 @@ func (db *DB) GetVotesForCL(ctx context.Context, clID string) ([]*ReviewVote, er
 // CL stacking
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// CI Results
+// ---------------------------------------------------------------------------
+
+// CreateCIResult inserts a new CI result.
+func (db *DB) CreateCIResult(ctx context.Context, r *CIResult) error {
+	sql := `
+	INSERT INTO ci_result (id, cl_id, patch_set, job_name, status, log_blob_hash, artifacts, triggered_by, created_at, updated_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+
+	return db.Exec(ctx, sql,
+		r.ID, r.CLID, r.PatchSet, r.JobName, r.Status,
+		r.LogBlobHash, r.Artifacts, r.TriggeredBy, r.CreatedAt, r.UpdatedAt,
+	)
+}
+
+// GetCIResultsForCL returns all CI results for a CL, ordered by created_at.
+func (db *DB) GetCIResultsForCL(ctx context.Context, clID string) ([]*CIResult, error) {
+	sql := `
+	SELECT id, cl_id, patch_set, job_name, status, log_blob_hash, artifacts, triggered_by, created_at, updated_at
+	FROM ci_result WHERE cl_id = $1 ORDER BY created_at`
+
+	rows, err := db.Query(ctx, sql, clID)
+	if err != nil {
+		return nil, fmt.Errorf("get ci results for cl: %w", err)
+	}
+	defer rows.Close()
+
+	return scanCIResults(rows)
+}
+
+// GetCIResultsForPatchSet returns CI results for a specific patch set of a CL.
+func (db *DB) GetCIResultsForPatchSet(ctx context.Context, clID string, patchSet int) ([]*CIResult, error) {
+	sql := `
+	SELECT id, cl_id, patch_set, job_name, status, log_blob_hash, artifacts, triggered_by, created_at, updated_at
+	FROM ci_result WHERE cl_id = $1 AND patch_set = $2 ORDER BY created_at`
+
+	rows, err := db.Query(ctx, sql, clID, patchSet)
+	if err != nil {
+		return nil, fmt.Errorf("get ci results for patch set: %w", err)
+	}
+	defer rows.Close()
+
+	return scanCIResults(rows)
+}
+
+// UpdateCIResult updates the status, log_blob_hash, and artifacts of a CI result.
+func (db *DB) UpdateCIResult(ctx context.Context, r *CIResult) error {
+	sql := `UPDATE ci_result SET status = $1, log_blob_hash = $2, artifacts = $3, updated_at = NOW() WHERE id = $4`
+	return db.Exec(ctx, sql, r.Status, r.LogBlobHash, r.Artifacts, r.ID)
+}
+
+// GetCIResult retrieves a single CI result by ID.
+func (db *DB) GetCIResult(ctx context.Context, id string) (*CIResult, error) {
+	sql := `
+	SELECT id, cl_id, patch_set, job_name, status, log_blob_hash, artifacts, triggered_by, created_at, updated_at
+	FROM ci_result WHERE id = $1`
+
+	r := &CIResult{}
+	err := db.QueryRow(ctx, sql, id).Scan(
+		&r.ID, &r.CLID, &r.PatchSet, &r.JobName, &r.Status,
+		&r.LogBlobHash, &r.Artifacts, &r.TriggeredBy, &r.CreatedAt, &r.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("ci result not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get ci result: %w", err)
+	}
+	return r, nil
+}
+
+func scanCIResults(rows pgx.Rows) ([]*CIResult, error) {
+	var results []*CIResult
+	for rows.Next() {
+		r := &CIResult{}
+		if err := rows.Scan(&r.ID, &r.CLID, &r.PatchSet, &r.JobName, &r.Status,
+			&r.LogBlobHash, &r.Artifacts, &r.TriggeredBy, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan ci result: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 // GetCLStack walks the parent_cl_id chain from the given CL to the root,
 // returning [self, parent, grandparent, ...].
 func (db *DB) GetCLStack(ctx context.Context, clID string) ([]*CL, error) {
